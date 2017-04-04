@@ -3,6 +3,10 @@ CCM, Cross-correlation Correction Method
 Matus Balogh, Slovak Academy of Sciences
 matus.balogh@savba.sk
 
+PLEASE let me know via email if you are about to use this code in a bit serious way than just testing. At this moment it is full of memory leaks and your "subscription" will encourage me to continue my work on it. 
+
+
+
 
 Application of discrete cross-correlation to correct time-dependent detector output 
 
