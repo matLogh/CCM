@@ -1,5 +1,5 @@
 # The Cross-correlation Correction Method (CCM)
-===============
+
 Matus Balogh, Slovak Academy of Sciences
 matus.balogh@cern.ch
 
@@ -7,7 +7,7 @@ Prerequisities: ROOT (see https://root.cern.ch/building-root), tested on ROOT6.1
 The code is rather hard to read, but if you miss some functionality, let me know. Description of the algorithm is given in the NIM A paper, copy is in this repo. 
 
 # Implementation
-===============
+
 
 ###### Calculating the displacement
 
@@ -36,11 +36,11 @@ Test spectrum correction parameters are extracted by fitting the displacements a
 
 Following options are available for the *selectFunction* based on number of free parameters:
 
-0 - autoselect, spline if less than 5 parameters, otherwise cubic
-1 - linear function with offset = 0
-2 - linear function
-3 - quadratic function
-4 - cubic function
+- 0 - autoselect, spline if less than 5 parameters, otherwise cubic
+- 1 - linear function with offset = 0
+- 2 - linear function
+- 3 - quadratic function
+- 4 - cubic function
 
 If the extracted displacement was flaged as wrong (see subsection *Calculating the displacement*) the number of fitting points might be less than the number of function's free parameters. This can be resolved by *allowLowOrderFit* allowing use of lower order fit to take place. If use of low order function is not allowed, but enough fit points are available the fit will proceed skipping the flaged points. However, if number of fit points is less than number of free parameters of the function, the flaged fit points are used anyway.
 
