@@ -688,7 +688,7 @@ void FixMatrix_fromFile(VarManager *V)//to be deleted
      //cout << x << " " << y << " " << y-eval_int << " " << bin_cont*(1-ratio) << endl;
     }
   }
-  TFile file("result.root", "RECREATE"); 
+  TFile file("CCM_files/result.root", "RECREATE"); 
   file.cd();
   mminus->Write();
   V->TEMAT->Write();
