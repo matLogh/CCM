@@ -6,7 +6,7 @@ USER_SOURCE = main_example.cpp
 
 all: CCM
 
-CCM: main_piestany_fakeDecay.cpp
+CCM: $(USER_SOURCE)
 	$(CC) $(CFLAGS) $(CCM_LIB) $(USER_SOURCE) -o $(TARGET)
 
 clean:
