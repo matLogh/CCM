@@ -122,3 +122,50 @@ Example use is in main_example.cxx, available public functions are listed in CCM
 **void ApplyRules()**
 - go through specified rules and flag bad fits
 
+### Functions for getting the results
+
+**void BuildShiftTable()**
+- builds table of relative displacements
+- table header:
+```
+number_of_ROIs
+ROI1_energy ROI2_energy, ...
+```
+- table body:
+```
+timeBin_testSpectrum1 ROI1_isOK(bool) ROI1_displacement ROI1_isOK(bool) ROI1_displacement ...
+timeBin_testSpectrum2 ROI1_isOK(bool) ROI1_displacement ROI1_isOK(bool) ROI1_displacement ...
+...
+```
+
+**void BuildFitTable()**
+- builds table with correction coefficients
+- table header:
+
+```
+default_fit_function
+```
+
+- table body:
+
+```
+timeBin_testSpectrum1  usedFitFcn fit_par_0  fit_par_1  fit_par_2 ...
+timeBin_testSpectrum2  usedFitFcn fit_par_0  fit_par_1  fit_par_2 ...
+...
+```
+
+**void FixMatrix()**
+- crates corrected copy of the time-energy matrix in *CCM_files/result.root*
+
+**void FixTree(char* TFile_name, TTree* tree, char* e_branch, char* t_branch)**
+- crates corrected tree
+- *TFile_name* - name the file for the new tree
+- *tree* - pointer to the tree carrying the data
+- *e_branch* - name of the energy branch in the *tree*
+- *t_branch* - name of the time branch in the *tree*
+
+ 
+
+
+
+	
