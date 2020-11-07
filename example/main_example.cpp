@@ -38,17 +38,13 @@ int main(int argc, char **argv)
 
    //Get tree from rootfiles
    TChain* tree = new TChain("data_tree");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_3.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_4.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_5.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_6.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_7.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_8.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_9.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_10.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_11.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_12.root");
-   tree->Add("data/DecayGammaSpectroscopy_timeUnstable_13.root");
+   char str[100];
+   for(int i=3; i<14; i++)
+   {
+      //this is a bit chaotic due to size limitation of the github repository
+      sprintf(str,"data/DecayGammaSpectroscopy_timeUnstable_%i.root",i);
+      tree->Add(str);
+   }
 
    Double_t e;
    Long64_t t;
