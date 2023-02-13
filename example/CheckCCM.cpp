@@ -16,6 +16,7 @@
 #include <numeric>      // std::accumulate
 
 // Root
+#include "TF1.h"
 #include "TTree.h"
 #include "TAxis.h"
 #include "TImage.h"
