@@ -36,6 +36,7 @@ list of throw exceptions:
 #include "TGFrame.h"
 #include "TSystem.h"
 #include "TVirtualPad.h"
+#include "TF1.h"
 
 
 #include "variables.h"
