@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <vector>
 #include <fstream>
+#include <string>
 #include <chrono> //measure time
 
 // Root
@@ -32,18 +33,26 @@ using namespace std::chrono;
 //g++ -std=c++0x `root-config --libs --cflags`  CheckCCM.cpp CCM.cpp Cross_correlation.cpp main_piestany_fakeDecay.cpp -o CCM
 
 
+#ifndef DATA_PATH
+   #define DATA_PATH ""
+#endif
+
 int main(int argc, char **argv)  
 {
    high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
    //Get tree from rootfiles
    TChain* tree = new TChain("data_tree");
-   char str[100];
+   // char str[100];
    for(int i=3; i<14; i++)
    {
       //this is a bit chaotic due to size limitation of the github repository
-      sprintf(str,"data/DecayGammaSpectroscopy_timeUnstable_%i.root",i);
-      tree->Add(str);
+      // sprintf(str,"data/DecayGammaSpectroscopy_timeUnstable_%i.root",i);
+      std::string path = DATA_PATH;
+      path += "/data/DecayGammaSpectroscopy_timeUnstable_" + std::to_string(i) + ".root";
+      std::cout << path << std::endl;
+
+      tree->Add(path.c_str());
    }
 
    Double_t e;
