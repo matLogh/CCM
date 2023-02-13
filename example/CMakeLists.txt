@@ -14,8 +14,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 # add_library(ccmlib SHARED  CheckCCM.h CCM.h Cross_correlation.h)
 # target_link_libraries(ccmlib ${ROOT_LIBRARIES} )
+message("   Project dir is : ${PROJECT_SOURCE_DIR}")
 
 
+add_definitions("-DDATA_PATH=\"${PROJECT_SOURCE_DIR}\"")
 
 add_executable(ccm main_example.cpp CheckCCM.h CCM.h Cross_correlation.h CheckCCM.cpp CCM.cpp Cross_correlation.cpp)
 target_link_libraries(ccm ${ROOT_LIBRARIES} )
