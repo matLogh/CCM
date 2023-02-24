@@ -4,7 +4,7 @@ Matus Balogh, Slovak Academy of Sciences
 matus.balogh@cern.ch
 
 Prerequisities: ROOT (see https://root.cern.ch/building-root), tested on ROOT6.18
-The code is rather hard to read, but if you miss some functionality, let me know. Description of the algorithm is given in the NIM A paper, copy is in this repo. 
+I admit, the code is rather hard to read and now a bit older, but if you miss some functionality, let me know. Description of the algorithm is given in the NIM A paper: https://www.sciencedirect.com/science/article/pii/S0168900221003521
 
 # Implementation
 
