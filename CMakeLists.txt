@@ -12,20 +12,15 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 
 
-# add_library(ccmlib SHARED  CheckCCM.h CCM.h Cross_correlation.h)
-# target_link_libraries(ccmlib ${ROOT_LIBRARIES} )
-message("   Project dir is : ${PROJECT_SOURCE_DIR}")
-
-
 add_definitions("-DDATA_PATH=\"${PROJECT_SOURCE_DIR}\"")
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/fitter/)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/fitter)
 
 
-add_executable(test main_example.cpp CCM.cpp Cross_correlation.cpp)
-target_link_libraries(test theuerkauf_fitter ${ROOT_LIBRARIES} )
+add_executable(optimizer optimizer.cpp CCM.cpp Cross_correlation.cpp)
+target_link_libraries(optimizer theuerkauf_fitter ${ROOT_LIBRARIES} )
 
-add_executable(ccm_agata test_agata.cpp CCM.cpp Cross_correlation.cpp)
-target_link_libraries(ccm_agata ${ROOT_LIBRARIES} )
+add_executable(simple_example simple_example.cpp CCM.cpp Cross_correlation.cpp)
+target_link_libraries(simple_example ${ROOT_LIBRARIES} )
 
