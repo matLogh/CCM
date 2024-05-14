@@ -5,106 +5,73 @@ list of throw exceptions:
 2 = normalization of sample vector error = its field of zeroes
 3 = vectors in dot product are not the same size
 */
-#include <string>
-#include <sstream>
-#include <iomanip>
-#include <vector>
-#include <thread>
-#include <atomic>
-#include <stdexcept>      // std::out_of_range
-#include <fstream>//open file
-#include <stdio.h> //strcat
-#include <algorithm>    // copy 
-#include <fstream>
-#include <mutex>
 
-// Root
-#include "TAxis.h"
-#include "TImage.h"
-#include "TFile.h"
-#include "TH1D.h"
-#include "TH2D.h"
-#include "TH1F.h"
-#include "TGraph.h"
-#include "TMultiGraph.h"
-#include "TCanvas.h"
-#include "TApplication.h"
-#include "TStyle.h"
-#include "TPad.h"
-#include "TROOT.h"
-#include "TColor.h"
-#include "TGFrame.h"
-#include "TSystem.h"
-#include "TVirtualPad.h"
-
-
-#include "variables.h"
+// #include "CheckCCM.h"
 #include "Cross_correlation.h"
-#include "CheckCCM.h"
+#include "variables.h"
 
-using namespace std;
+#define SQRT_2_PI 2.5066282746310002
 
-
-void CrossCorrel::SetVariables(VarManager *v){
-	V = v;
+Double_t gaussianWithBackGround(Double_t *x, Double_t *par)
+{
+    return par[0] / (par[2] * SQRT_2_PI) * exp(-(((x[0] - par[1]) * (x[0] - par[1])) / (2 * par[2] * par[2]))) +
+           par[3] + par[4] * x[0];
 }
 
-void CrossCorrel::Process(unsigned int thread_id, atomic<int>* thread_task, 
-                  VarManager *v, std::mutex &mtx, ResCont** ResV)
+void CrossCorrel::Process(unsigned int thread_id, std::atomic<int> *thread_task, std::mutex &mtx_task,
+                          std::mutex &mtx_fit)
 {
-  ResVec = ResV;
-  V = v;
-  while(true)
-  {
-    mtx.lock();
-    current_task = ++(*thread_task);
-    mtx.unlock();
-
-    if(current_task >= V->total_tasks) 
+    while (true)
     {
-      break;
+        mtx_task.lock();
+        current_task = ++(*thread_task);
+        if (current_task >= V->total_tasks)
+        {
+            mtx_task.unlock();
+            break;
+        }
+        std::cout << std::setprecision(3) << "Progress: " << (float)current_task / (float)V->total_tasks * 100.
+                  << "% \r" << std::flush;
+        mtx_task.unlock();
+        ROIAnalysis(static_cast<int>(current_task % V->number_of_ROIs), current_task / V->number_of_ROIs, mtx_fit);
     }
-    printf("THREAD %d PROCESSING-TASK %d \n", thread_id, current_task);
-    ROIAnalysis(current_task % V->number_of_ROIs, current_task/V->number_of_ROIs, mtx);
-    printf("THREAD %d  FINISHED-TASK  %d \n", thread_id, current_task);
-  }
-  printf("\n");
 }
 
 /****************************************************
-value -999 passed to dp_vec indicates error and this 
+value -999 passed to dp_vec indicates error and this
 must be disregarded later
 ****************************************************/
-void CrossCorrel::ROIAnalysis(unsigned int ROI, int time, std::mutex &mtx)
+void CrossCorrel::ROIAnalysis(const int ROI_index, const int time, std::mutex &mtx_fit)
 {
-  //create data vector with size that includes whole area around the floating vector
-  vector<double> data_vec = GetDataVec(ROI, time);
-  //vector of dot products
-  dp_vec.resize(V->displ_range[ROI] - V->vector_dimension[ROI]);
-  //temporary vector holding current data
-  std::vector<double> temp_data;
-  //cycle through through the whole region, calculate cross correlation
-  for(int shift=0; shift < V->displ_range[ROI] - V->vector_dimension[ROI]; shift++)
-  {
-    temp_data = std::vector<double>(&data_vec[shift], &data_vec[shift + V->vector_dimension[ROI]]);
-    if(Normalize(temp_data) == 0) // 0 == its OK
-      dp_vec[shift] = DotProduct(temp_data, V->sample_vector[ROI]);
-    else
-      dp_vec[shift] = -999; 
-  }
-  mtx.lock();
-  double *arr = FitSigma(dp_vec, V->setting.create_fit_PNG, ROI, time);
-  mtx.unlock();
-  SaveToContainer(time, ROI, dp_vec, arr);
-  SaveDPtoFile(time, ROI, dp_vec);
 
-  delete arr;
+    // create data vector with size that includes whole area around the floating vector
+    std::vector<double> data_vec = GetDataVec(ROI_index, time);
+
+    // vector of dot products
+    dp_vec.resize(V->ROIs[ROI_index].displacement_steps);
+    // temporary vector holding current data
+    std::vector<double> temp_data;
+    // cycle through through the whole region, calculate cross correlation
+    for (int shift = 0; shift < V->ROIs[ROI_index].displacement_steps; shift++)
+    {
+        temp_data = std::vector<double>(&data_vec[shift], &data_vec[shift + V->ROIs[ROI_index].vector_dimension]);
+
+        if (Normalize(temp_data) == 0) // 0 == its OK
+            dp_vec[shift] = DotProduct(temp_data, V->sample_vector[ROI_index]);
+        else
+        {
+            dp_vec[shift] = -999;
+        }
+    }
+
+    this->SaveToContainer(time, ROI_index, mtx_fit);
 }
 
-std::vector<double> CrossCorrel::GetDataVec(int ROI, int time)
+std::vector<double> CrossCorrel::GetDataVec(const int ROI_index, const int time)
 {
-  vector<double> data_vec(&V->TEMATarr[ROI][time][0], &V->TEMATarr[ROI][time][V->displ_range[ROI]]);
-  return data_vec;
+    std::vector<double> data_vec(&V->TEMATarr[ROI_index][time][0],
+                                 &V->TEMATarr[ROI_index][time][V->ROIs[ROI_index].displacement_range]);
+    return data_vec;
 }
 
 /****************************************************
@@ -112,219 +79,213 @@ retval:
    0 = OK
   -1 = input vector is full zeroes
 ****************************************************/
-int CrossCorrel::Normalize(std::vector<double>& v)
+int CrossCorrel::Normalize(std::vector<double> &v)
 {
-  retval = 0;
-  norm = 0;
-  for(uint i=0; i < v.size(); i++){
-    norm = norm + (v[i]*v[i]);
-  }
-  if(norm <=0) {
-    norm = 1;
-    retval = -1;
-  }
-
-  norm = sqrt(norm);
-  for(uint i=0; i < v.size(); i++){
-    v[i] = v[i]/(double)norm;
-  }
-  return retval;
-}
-
-double CrossCorrel::DotProduct(std::vector<double>& v1, std::vector<double>& v2)
-{ 
-  dp = 0;
-  if(v1.size() != v2.size()) 
-  {
-    cout << "WRONG VECTOR SIZE" << endl;
-    throw 3;
-    return -999;
-  }
-  for(uint i=0; i < v1.size(); i++)
-  {
-    dp += v1[i]*v2[i];
-  }
-  return dp;
-}
-
-void CrossCorrel::SaveToContainer(int time, int ROI, std::vector<double>& dp_vec, double* arr)
-{
-  //var->finnal_shift_values[ROI][time] = VectorMaximumIndex(v);
-  //  var->finnal_dp_values[ROI][time] = v[var->finnal_shift_values[ROI][time]];
-  //  var->finnal_shift_values[ROI][time] = var->finnal_shift_values[ROI][time] - var->base_shift_value[ROI];
-
-  ResVec[ROI][time].shift      = IndexOfMaxValue(dp_vec);
-  ResVec[ROI][time].dp         = dp_vec[ResVec[ROI][time].shift];
-  ResVec[ROI][time].shift      = ResVec[ROI][time].shift - V->base_shift_value[ROI];
-  ResVec[ROI][time].fit_chi2   = arr[0];
-  ResVec[ROI][time].fit_sigma  = arr[1];
-  ResVec[ROI][time].fit_mi     = arr[2];
-  //printf("ROI: %d, time: %d, DP %f shift %d , base_shift %d \n", ROI, time, ResVec[ROI][time].dp, ResVec[ROI][time].shift, V->base_shift_value[ROI]);
-}
-
-void CrossCorrel::SaveDPtoFile(int time, int ROI, std::vector<double>& v)
-{ 
-    //write whole dot product array to the file
-    ofstream output;
-    char str[100];
-    sprintf(str, "CCM_files/dot_products/DP_coef_ROI%i_T%i.dat",ROI, time);
-    output.open(str);
-   //output << "timeBin "<<time << '\n';
-    for(uint i=0; i<v.size(); i++) 
+    norm = 0;
+    for (uint i = 0; i < v.size(); i++)
     {
-      output << i - V->base_shift_value[ROI] <<"\t" << v[i] <<'\n';
+        norm = norm + (v[i] * v[i]);
     }
-    output << '\n';
-    output.close();
-
-    ofstream f;
-    char st[100];
-    sprintf(st, "CCM_files/dot_products/MAX_ROI%i_T%i.dat", ROI, time);
-    f.open(st);
-    f << ResVec[ROI][time].shift;
-    f.close();
-}
-
-int CrossCorrel::IndexOfMaxValue(std::vector<double>& v)
-{
-  return std::distance(v.begin(), std::max_element(v.begin(), v.end())); 
-}
-
-double* CrossCorrel::FitSigma(std::vector<double> dp_vec, bool createPNG, int ROI, int time)
-{
-  uint bins = dp_vec.size();
-
-  char str[50];
-  sprintf(str, "h_%d", current_task);
-
-  TH1D* h = new TH1D(str, str, bins, 0, 1);
-  double mean_dp = 0;
-  for(uint i=0; i<bins; i++)
-  {
-    mean_dp += dp_vec[i];
-    h->SetBinContent(i+1, dp_vec[i]);
-  }
-  mean_dp = mean_dp/(double)bins;
-  int left_bin = 0;
-  int right_bin= bins;
-  int center_bin = h->GetMaximumBin();
-
-  //find fist bin containing sub-mean-value LEFT from the peak
-  for(int i=center_bin; i >= 1; i--)
-  {
-    if(dp_vec[i] - mean_dp < 0)
+    if (norm == 0)
     {
-      left_bin = i;
-      break;
+        return -1;
     }
-  }
 
-  //find fist bin containing sub-mean-value RIGHT from the peak
-  for(uint i=center_bin; i <= bins; i++)
-  {
-    if(dp_vec[i] - mean_dp < 0)
+    norm = 1. / (double)sqrt(norm);
+    for (uint i = 0; i < v.size(); i++)
     {
-      right_bin = i;
-      break;
+        v[i] = v[i] * norm;
     }
-  } 
-
-  //return values of result:
-  //param     0 - reduced chi2
-  //param     1 - sigma
-  //param     2 - mi
-  double* result = new double[3];
-  //check if the fitting range is bigger that 5 bins, if its 5 bins or less return -1 as sigma
-  if(right_bin - left_bin <= 5)
-  {
-    result[0] = -1;
-    result[1] = -1;
-    result[2] = -1;
-  }
-
-  //get axis values for given bins
-  double low = h->GetXaxis()->GetBinCenter(left_bin);
-  double high = h->GetXaxis()->GetBinCenter(right_bin);
-  double middle = h->GetXaxis()->GetBinCenter(center_bin);
-
-  //set fit function with parameters
-  //param:   0 - amplitude
-  //param:   1 - mi/center
-  //param:   2 - sigma
-  //param:   3 - bcg offset
-  //param:   4 - bcg gain/linear
-  TF1 *g = new TF1("g", gaussianWithBackGround, low, high, 5);
-  g->SetParLimits(0, 0, 1); 
-  g->SetParameter(0, 0.2);
-  g->SetParLimits(1, low, high);
-  g->SetParameter(1, middle);
-  g->SetParLimits(2, 0, 1E6);
-  g->SetParameter(2, 10);
-  g->SetParLimits(3, 0, 1);
-  g->SetParameter(3, mean_dp);
-  g->SetParLimits(4, 0, 10);
-  g->SetParameter(4, 0);
-  g->SetParName(0, "amplitude");
-  g->SetParName(1, "mean");
-  g->SetParName(2, "sigma");
-  g->SetParName(3, "offset");
-  g->SetParName(4, "gain/linear");
-
-
-  if(createPNG)
-  {
-    h->Fit("g","RQ");
-    char str[100];
-    sprintf(str, "CCM_files/fit_images/DP_coef_ROI%i_T%i.png",ROI, time);
-    SaveAsPNG(h, str, g);
-  }
-  else 
-  {
-    h->Fit("g","RQN");
-  }
-
-  double chi2 = g->GetChisquare();
-  result[0] = chi2/(double)(bins);
-  result[1] = g->GetParameter(2);
-  result[2] = g->GetParameter(1);
-
-  delete h;
-  delete g;
-  return result;
+    return 0;
 }
 
-void CrossCorrel::SaveAsPNG(TH1D* h, char* name)
+double CrossCorrel::DotProduct(std::vector<double> &v1, std::vector<double> &v2)
 {
-  
-  TCanvas *c1 = new TCanvas("c1","",200,10,1920,1080);    
-  c1->SetFillColor(0);
-  c1->SetGrid();
-  h->Draw();
-
-  TImage *img = TImage::Create();
-  img->FromPad(c1);
-  img->WriteImage(name);
-
-  delete img;
-  delete c1;
-  
+    dp = 0;
+    if (v1.size() != v2.size())
+    {
+        std::cerr << "WRONG VECTOR SIZE" << std::endl;
+        throw 3;
+        return -999;
+    }
+    for (uint i = 0; i < v1.size(); i++)
+    {
+        dp += v1[i] * v2[i];
+    }
+    return dp;
 }
 
-void CrossCorrel::SaveAsPNG(TH1D* h, char* name, TF1* funct)
+void CrossCorrel::SaveToContainer(const int time, const int ROI_index, std::mutex &mtx_fit)
 {
-  
-  TCanvas *c1 = new TCanvas("c1","",200,10,1920,1080);    
-  c1->SetFillColor(0);
-  c1->SetGrid();
-  h->Draw();
-  funct->Draw("same");
+    // check if dp has valid values
+    if (std::count(dp_vec.begin(), dp_vec.end(), -999) == dp_vec.size())
+    {
+        ResVec[ROI_index][time].isValid = false;
+        // std::cout << "\nTime " << time << " contains " << std::count(dp_vec.begin(), dp_vec.end(), -999)
+        //           << " invalid values" << std::endl;
+        return;
+    }
+    std::replace_if(
+        dp_vec.begin(), dp_vec.end(), [](double i) { return i == -999; }, 0.0);
 
-  TImage *img = TImage::Create();
-  img->FromPad(c1);
+    // TApplication theApp("App", 0, 0);
+    // TGraph gr;
+    // std::vector<double> data_vec = GetDataVec(ROI_index, time);
 
-  img->WriteImage(name);
+    // for (int i = 0; i < dp_vec.size(); i++)
+    // {
+    //     gr.AddPoint(i, dp_vec[i]);
+    // }
+    // gr.Draw("ALP");
+    // theApp.Run();
 
-  delete img;
-  delete c1;
+    // copy dp to container
+    ResVec[ROI_index][time].dp_vec.resize(dp_vec.size());
+    memcpy(&ResVec[ROI_index][time].dp_vec[0], &dp_vec[0], dp_vec.size() * sizeof(double));
 
+    // get shift using pol2 fit of 7 points
+    this->GetShift(ResVec[ROI_index][time].bin_shift, ResVec[ROI_index][time].dp, mtx_fit);
+    // offset the shift value
+    ResVec[ROI_index][time].bin_shift += V->ROIs[ROI_index].base_shift_value;
+    ResVec[ROI_index][time].energy_shift = V->TEMAT->GetYaxis()->GetBinWidth(1) * ResVec[ROI_index][time].bin_shift;
+
+    // fit with gaussian to estimate property of the peak
+    mtx_fit.lock();
+    this->FitControlGaussian(ResVec[ROI_index][time].gfit_chi2, ResVec[ROI_index][time].gfit_sigma,
+                             ResVec[ROI_index][time].gfit_mu);
+    mtx_fit.unlock();
+}
+
+void CrossCorrel::GetShift(double &shift, double &dp, std::mutex &mtx_fit)
+{
+    const static int ndim = 9;
+    static_assert(ndim % 2 == 1, "ndim must be odd");
+
+    int index = std::distance(dp_vec.begin(), std::max_element(dp_vec.begin(), dp_vec.end()));
+    if (dp_vec.size() < ndim)
+    {
+        shift = static_cast<double>(index);
+        dp = dp_vec[index];
+        return;
+    }
+
+    double arr_x[ndim];
+    double arr_y[ndim];
+    int correction = 0;
+    if (index + ndim / 2 > dp_vec.size() - 1)
+        correction = (dp_vec.size() - 1) - (index + ndim / 2);
+    if (index - ndim / 2 < 0)
+        correction = ndim / 2 - index;
+    // for (int i = -ndim / 2 + correction; i <= ndim / 2 + correction; i++)
+    for (int i = 0; i < ndim; i++)
+    {
+        arr_x[i] = index + i + correction - ndim / 2;
+        arr_y[i] = dp_vec[arr_x[i]];
+    }
+    TGraph gr(ndim, arr_x, arr_y);
+    {
+        mtx_fit.lock();
+        TF1 fcn("shift_fitfcn", "pol4", arr_x[0], arr_x[ndim - 1]);
+        fcn.SetNpx(ndim * 1000);
+        gr.Fit(&fcn, "QNC");
+        // if (fcn.GetMaximum(arr_x[0], arr_x[ndim - 1]) < dp_vec[index])
+        // {
+        //     shift = static_cast<double>(index);
+        //     dp = dp_vec[index];
+        //     mtx_fit.unlock();
+        //     return;
+        // }
+
+        shift = fcn.GetMaximumX();
+        dp = fcn.GetMaximum();
+        mtx_fit.unlock();
+    }
+}
+
+void CrossCorrel::FitControlGaussian(double &rchi2, double &sigma, double &mu)
+{
+    int nbins = static_cast<int>(dp_vec.size());
+    TH1D h(Form("h_%d", current_task), Form("h_%d", current_task), nbins, -0.5, nbins - 0.5);
+    double mean_dp = 0;
+    for (uint i = 0; i < nbins; i++)
+    {
+        mean_dp += dp_vec[i];
+        h.SetBinContent(i + 1, dp_vec[i]);
+    }
+
+    mean_dp = mean_dp / (double)nbins;
+
+    int left_bin = 0;
+    int right_bin = nbins;
+    int center_bin = h.GetMaximumBin();
+
+    // find fist bin containing sub-mean-value LEFT from the peak
+    for (int i = center_bin; i >= 1; i--)
+    {
+        left_bin = i;
+        if (dp_vec[i - 1] - mean_dp < 0)
+        {
+            break;
+        }
+    }
+
+    // find fist bin containing sub-mean-value RIGHT from the peak
+    for (uint i = center_bin; i <= nbins; i++)
+    {
+        right_bin = i;
+
+        if (dp_vec[i - 1] - mean_dp < 0)
+        {
+            break;
+        }
+    }
+
+    // return values of result:
+    // param     0 - reduced chi2
+    // param     1 - sigma
+    // param     2 - mu
+    double *result = new double[3];
+    // check if the fitting range is bigger that 5 bins, if its 5 bins or less return -1 as sigma
+    if (right_bin - left_bin <= 5)
+    {
+        result[0] = -1;
+        result[1] = -1;
+        result[2] = -1;
+    }
+
+    // get axis values for given bins
+    double low = h.GetXaxis()->GetBinCenter(left_bin);
+    double high = h.GetXaxis()->GetBinCenter(right_bin);
+    double middle = h.GetXaxis()->GetBinCenter(center_bin);
+
+    // set fit function with parameters
+    // param:   0 - amplitude
+    // param:   1 - mu/center
+    // param:   2 - sigma
+    // param:   3 - bcg offset
+    // param:   4 - bcg gain/linear
+    TF1 fcn("gauss_with_background", gaussianWithBackGround, low, high, 5);
+    fcn.SetParLimits(0, 0., 1.);
+    fcn.SetParameter(0, 0.2);
+    fcn.SetParLimits(1, low, high);
+    fcn.SetParameter(1, middle);
+    fcn.SetParLimits(2, 0., 1.E6);
+    fcn.SetParameter(2, 10.);
+    fcn.SetParLimits(3, 0., 1.);
+    fcn.SetParameter(3, mean_dp);
+    // fcn.SetParLimits(4, 0, 10);
+    fcn.SetParameter(4, 0);
+
+    fcn.SetParName(0, "amplitude");
+    fcn.SetParName(1, "mean");
+    fcn.SetParName(2, "sigma");
+    fcn.SetParName(3, "offset");
+    fcn.SetParName(4, "gain/linear");
+
+    h.Fit("gauss_with_background", "RQN");
+
+    double chi2 = fcn.GetChisquare();
+    rchi2 = chi2 / (double)(nbins);
+    sigma = fcn.GetParameter(2);
+    mu = fcn.GetParameter(1);
 }

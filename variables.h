@@ -1,100 +1,131 @@
+#include "TH2D.h"
+#include <atomic>
 #include <iostream>
 #include <vector>
-#include <atomic>
-#include "TH2D.h"
 
 #ifndef HEADER_H
 #define HEADER_H
 
 extern std::atomic<int> thread_task;
-extern std::atomic<bool> wait;
+// extern std::atomic<bool> wait;
 
-using namespace std;
+struct Region_of_interest
+{
+    const double energy_window_low;
+    const double energy_window_high;
+    const double energy_displacement_low;
+    const double energy_displacement_high;
+    const double desired_energy;
 
-struct Settings
-{  
-   //automatic settings
-   bool use_container_flag = false;
-   //user settings
+    /// @brief  bin_window_low: bin number of the energy_window_low
+    const int bin_window_low;
+    /// @brief  bin_window_high: bin number of the energy_window_high
+    const int bin_window_high;
+    /// @brief how many bins below window_low are we moving
+    const int bin_displacement_low;
+    /// @brief how many bins above window_high are we moving
+    const int bin_displacement_high;
 
-   bool create_fit_PNG = false;
-   bool create_distro_PNG = true;
-   
-   bool use_shift = true;
-   bool use_mi = false;
+    /// @brief dimension of vectors that is used for cross-correlation
+    const int vector_dimension;
+    /// @brief how many bins are in the ROI it total - number of bins between bin_window_low minus displacement_low and
+    /// bin_window_high plus displacement_high
+    const int displacement_range;
+    /// @brief how many shifts of the vector are to be performed
+    const int displacement_steps;
 
-   int SigmaDistro_bins = 1100;
-   int SigmaDistro_from = -1;
-   int SigmaDistro_to   = 100;
+    const int base_shift_value;
 
-   int dpDistro_bins = 100;
-   int dpDistro_from = 0;
-   int dpDistro_to   = 1;
-
-   int selectFitFunct = 0; //0-autochoose to make spline, 1-zero cross, 2-linnear, 3-quadratic, 4-cubic
-   bool allowLowOrderFit = true;
+    Region_of_interest() = delete;
+    Region_of_interest(const TH2D &matrix, double _energy_window_low, double _energy_window_high,
+                       double _energy_displacement_low, double _energy_displacement_high, double _desired_energy)
+        : energy_window_low(_energy_window_low), energy_window_high(_energy_window_high),
+          energy_displacement_low(_energy_displacement_low), energy_displacement_high(_energy_displacement_high),
+          desired_energy(_desired_energy), bin_window_low(matrix.GetYaxis()->FindBin(_energy_window_low)),
+          bin_window_high(matrix.GetYaxis()->FindBin(_energy_window_high)),
+          bin_displacement_low(static_cast<int>(energy_displacement_low / matrix.GetYaxis()->GetBinWidth(1))),
+          bin_displacement_high(static_cast<int>(energy_displacement_high / matrix.GetYaxis()->GetBinWidth(1))),
+          vector_dimension(bin_window_high - bin_window_low),
+          displacement_range(bin_displacement_high - bin_displacement_low + vector_dimension),
+          displacement_steps(displacement_range - vector_dimension),
+          //   base_shift_value(bin_window_low - bin_displacement_low)
+          base_shift_value(bin_displacement_low)
+    {
+        if (_energy_window_low > _energy_window_high)
+            throw std::runtime_error("energy_window_low > energy_window_high");
+        if (_energy_displacement_low > _energy_displacement_high)
+            throw std::runtime_error("energy_displacement_low > energy_displacement_high");
+        if (bin_window_high + bin_displacement_high > matrix.GetYaxis()->GetNbins())
+            throw std::runtime_error("Energy window + displacement is larger then range of matrix!");
+        if (bin_window_low - bin_displacement_low < 1)
+            throw std::runtime_error("Energy window - displacement is smaller then range of matrix!");
+    }
+    void print() const
+    {
+        std::cout << "energy_window_low: " << energy_window_low << '\n';
+        std::cout << "energy_window_high: " << energy_window_high << '\n';
+        std::cout << "energy_displacement_low: " << energy_displacement_low << '\n';
+        std::cout << "energy_displacement_high: " << energy_displacement_high << '\n';
+        std::cout << "desired_energy: " << desired_energy << '\n';
+        std::cout << "bin_window_low: " << bin_window_low << '\n';
+        std::cout << "bin_window_high: " << bin_window_high << '\n';
+        std::cout << "bin_displacement_low: " << bin_displacement_low << '\n';
+        std::cout << "bin_displacement_high: " << bin_displacement_high << '\n';
+        std::cout << "vector_dimension: " << vector_dimension << '\n';
+        std::cout << "displacement_range: " << displacement_range << '\n';
+        std::cout << "displacement_steps: " << displacement_steps << '\n';
+        std::cout << "base_shift_value: " << base_shift_value << '\n';
+    }
 };
-
-struct Rules
-{  
-   bool* isSigma;
-   bool* isDP;
-   bool* isChi2;
-   double* sigma_low;
-   double* sigma_high;
-   double* dp;
-   double* chi2;
-};
-
 
 struct VarManager
 {
-   //INPUT VIABLES
-   TH2D* TEMAT;
-   double*** TEMATarr;              //TH2D loaded as a data cube [ROI][x][y]
-                                    //keep in mind that coord x and y starts with 0 for every ROI
-   double time_width;
+    // INPUT VARIABLES
+    TH2D *TEMAT;
+    double ***TEMATarr; // TH2D loaded as a data cube [ROI][x][y]
+                        // keep in mind that coord x and y starts with 0 for every ROI
 
-   int number_of_ROIs;
-   int total_tasks;
-   int time_bins;
-   //EVERYTHING IS IN BINS!!!
-   //dimensions of these std::vector are for different ROIs
-   std::vector<uint> ewin_low;          //low edge of energy window, basically defines the sample vector beginning 
-   std::vector<uint> ewin_high;         //high edge of energy window, basically defines the sample vector end 
-   std::vector<uint> displ_low;         //lowest displacement edge 
-   std::vector<uint> displ_high;        //highest displacement edge
-   std::vector<uint> vector_dimension;  //number of dimension of vector
-   std::vector<uint> base_shift_value;  //ewin_low[i] - displ_low[i] -> for purpose of displaying correct displacements
-   std::vector<uint> displ_range;       //displ_high[i] - displ_low[i]
+    std::vector<Region_of_interest> ROIs;
+    std::vector<std::vector<double>> sample_vector;
 
-   std::vector<vector<double> > sample_vector;
-
-   Settings setting;
-   Rules rule;
-
-
+    int number_of_ROIs;
+    int total_tasks;
+    int time_bins;
 };
-//definition of result container
+// definition of result container
 struct ResCont
 {
-   int shift;
-   double dp;
-   double fit_sigma;
-   double fit_mi;
-   double fit_chi2;
-   bool isOk = true;
-}; 
+    bool isValid{true};
+    double bin_shift{0.};
+    double energy_shift{0.};
+    double dp{0.};
+    double gfit_sigma{0.};
+    double gfit_mu{0.};
+    double gfit_chi2{0.};
+    std::vector<double> dp_vec;
+
+    void print()
+    {
+        std::cout << "isValid: " << (isValid ? "true" : "false") << "\n";
+        std::cout << "bin_shift: " << bin_shift << "\n";
+        std::cout << "energy_shift: " << energy_shift << "\n";
+        std::cout << "dp: " << dp << "\n";
+        std::cout << "gfit_sigma: " << gfit_sigma << "\n";
+        std::cout << "gfit_mu: " << gfit_mu << "\n";
+        std::cout << "gfit_chi2: " << gfit_chi2 << "\n";
+        std::cout << "dp_vec: ";
+        for (const auto &val : dp_vec)
+        {
+            std::cout << val << " ";
+        }
+        std::cout << "\n";
+    }
+};
 
 struct FitCont
 {
-   vector<double> coef;
-   int functionUsed; //1-4
-   int defaultFunction;
-   double time_width;
+    std::string functionUsed;
+    std::vector<double> coef;
 };
-
-
-
 
 #endif

@@ -1,171 +1,184 @@
 # The Cross-correlation Correction Method (CCM)
 
-Matus Balogh, Slovak Academy of Sciences
-matus.balogh@cern.ch
+Any mistakes in the codes are purely mine, please report them to <matus.balogh@cern.ch>.
 
-Prerequisities: ROOT (see https://root.cern.ch/building-root), tested on ROOT6.18
-I admit, the code is rather hard to read and now a bit older, but if you miss some functionality, let me know. Description of the algorithm is given in the NIM A paper: https://www.sciencedirect.com/science/article/pii/S0168900221003521
+Basic description of the algorithm is given [in the NIM A paper](https://www.sciencedirect.com/science/article/pii/S0168900221003521), but the code here provides a few additional features, such as spline-based corrections. Advantage of the CCM algorithm is that it can be applied for time-varying spectra (such as beta-decays, isomeric decays etc.) and the region used to evaluate energy shifts does not need to be a peak but rather an arbitrary spectral feature unique it shape in it's vicinity. 
 
-# Implementation
+# Build
+Prerequisities: ROOT (see https://root.cern.ch/building-root), tested on ROOT6.26/15
 
-
-### Calculating the displacement
-
-As mentioned in the NIM paper, identifying the maximum of dot product for a set of displacement of given ROI and test spectrum yields only integer value, which provides only limited precision. Therefore, in this code a Gaussian fit is used to extract the displacement. The fit is performed on limited number of points around the dot product maximum (*D_M*). The number of accepted points must be whitin the interval *(D_M-D_A/2, D_M+D_A/2)*, where *D_A* is the average dot product calculated from the whole set. The Gaussian function is chosen, as peak-like shape is expected to be within the ROI, and convolution/cross-correlation of two Gaussian functions yiealds another Gaussian. 
-
-Result of the fit provide beside the displacement also the sigma and chi2, which can be used to capture and ignore incorrect fits. Wrong result can be also captured by checking if the resulting displacements falls into pre-selected interval. If any of these conditions is not met, the displacement value of given ROI and test spectrum is flaged and handeled by procedure for extrating the correction parameters, see the *Correction parameters - fitting function* subsection. 
-
-
-Function listed below are optional, but can be used to set the rules to flag bad fits. They should be used *after* running the CCM.
-- *SetRules_sigma()*
-- *SetRules_chi2()*
-- *AutoRules()*
-- *AutoRules_allROIs()*
-
-After setting rules, you need to apply them with 
-
-- ApplyRules()
-
-I advise to use them if you experience bad results and even. Bad results may be however also be caused by the bad settings, usuall suspect is time-binning or presence of another peak/spectral shape similar to the one encompassed by the ROI within the displacement range.
-
-### Correction parameters, the fitting function
-
-Test spectrum correction parameters are extracted by fitting the displacements as a function of energy of their respective ROIs. Currently only hardcoded linear, quadratic and cubic function can be used. Fit function is selected using the:
-
-- *SelectFitFunction(int selectFunction, bool allowLowOrderFit)*
-
-Following options are available for the *selectFunction* based on number of free parameters:
-
-- 0 - autoselect, spline if less than 5 parameters, otherwise cubic
-- 1 - linear function with offset = 0
-- 2 - linear function
-- 3 - quadratic function
-- 4 - cubic function
-
-If the extracted displacement was flaged as wrong (see subsection *Calculating the displacement*) the number of fitting points might be less than the number of function's free parameters. This can be resolved by *allowLowOrderFit* allowing use of lower order fit to take place. If use of low order function is not allowed, but enough fit points are available the fit will proceed skipping the flaged points. However, if number of fit points is less than number of free parameters of the function, the flaged fit points are used anyway.
-
-### Getting the results
-
-If you need to use specific function to get the correction parameters you can get the shift table by calling the *BuildShiftTable()* after running the CCM. Its structure will be printed once called. 
-
-Similarily, the fit table can be called by *BuildFitTable()* to get correction parameters directly. 
-
-Very usefull is to fix the matrix used as an input by the *FixMatrix()* function. In some versions of the ROOT might not display the matrix content properly (or at all), but the matrix projections will work.
-
-Events stored in the TTree* can be corrected individually and stored in a new "fixedTree" TTree. Currently, fixedTree will only contain the energy and time branches.  
-
-
-# HOW TO USE
-
-Example use is in main_example.cxx, available public functions are listed in CCM.h. Replace the "USER_SOURCE" with your own source code in Makefile. Run with ./CCM. 
-
-**All inputs inputs into CCM are in terms of X or Y bin values of the time-energy matrix, not in actual values of energy and time!**
-
-## Functions
-
-
-### Constructor
-
-**CCM(TH2D* matrix, vector<uint>& reh, vector<uint>& rel, vector<uint>& rp, vector<uint>& rm, uint reference_time_low, uint reference_time_high)** 
-- *reh* - ROI energy high, vector-array of high energies (bin value) for each ROI
-- *rel* - ROI energy low, vector-array of low energies (bin value) for each ROI
-- the *rel - reh* region defines the dimension of the test/reference vectors (vectors in mathematical sense)
-- *rp, rm* - ROI plus/minus, vector-array defining the maximum/minimum relative displacement for each ROI 
-- reference_time_low, reference_time_high - time window (bin value) for the reference vector 
-
-### Work function
-
-**void StartCCM(unsigned int number_of_threads=4)**
-- number_of_threads - specify number of worker threads
-
-
-### Functions before starting the CCM
-
-
-**void SetDrawDP(bool val)**
-- option to crate PNG files of dot product vs relative displacement graphs
-- png images are great for quick visual check of the relative displacement graphs
-- it will significantly increase computation time
-
-**void SelectFitFunction(int selectFunction, bool allowLowOrderFit)**
-- detailed description in [this subsection](#correction-parameters,-the-fitting-function)
-
-**void ChangeReferenceTime(double reference_time_low, double reference_time_high)**
-- change the reference spectrum
-
-### Functions after starting the CCM
-
-**void SetRules_dp(int ROI, double dp)**
-- set acceptance threshold for the dot product value extracted by Gaussian fit for given ROI
-- if extracted dot product is less than the threshold, fit is flaged as bad
-- [see the Calculating the displacement subsection](#calculating-the-displacement)
-
-**void SetRules_chi2(int ROI, double chi2)**
-- set acceptance threshold for the chi2 extracted by Gaussian fit for selected ROI
-- if extracted chi2 is less than the threshold, fit is flaged as bad
-- [see the Calculating the displacement subsection](#calculating-the-displacement)
-
-**void SetRules_sigma(int ROI, double sigma_low, double sigma_high)**
-- set acceptance limits for the sigma of the Gaussian dot product fit for given ROI
-- if extracted sigma is outside of these limit, fit is flaged as bad
-- [see the Calculating the displacement subsection](#calculating-the-displacement)
-
-**void AutoRules(int ROI, double sigma_width_acceptance = 3, double dp_width_acceptance = 3)**
-- creates histograms of the dot product and sigma values extracted by Gaussian fit and set appropriate limits based on user input for specified ROI
-- [see the Calculating the displacement subsection](#calculating-the-displacement)
-
-**void AutoRules(int ROI, double sigma_width_acceptance = 3, double dp_width_acceptance = 3)**
-- creates histograms of the dot product and sigma values extracted by Gaussian fit and set appropriate limits based on user input for all ROIs
-- not really a good idea to use, as settings for different ROIs should vary!
-- [see the Calculating the displacement subsection](#calculating-the-displacement)
-
-**void ApplyRules()**
-- go through specified rules and flag bad fits
-
-### Functions for getting the results
-
-**void BuildShiftTable()**
-- builds table of relative displacements
-- table header:
-```
-number_of_ROIs
-ROI1_energy ROI2_energy, ...
-```
-- table body:
-```
-timeBin_testSpectrum1 ROI1_isOK(bool) ROI1_displacement ROI1_isOK(bool) ROI1_displacement ...
-timeBin_testSpectrum2 ROI1_isOK(bool) ROI1_displacement ROI1_isOK(bool) ROI1_displacement ...
-...
+```bash
+git clone https://github.com/matLogh/CCM.git
+mkdir build
+cd build
+cmake ../
+make
 ```
 
-**void BuildFitTable()**
-- builds table with correction coefficients
-- table header:
+Executables ```simple_example``` and ```optimizer``` will be created that are using the data set from the ```data/``` directory. Source code ```simple_example.cpp``` showcases the most basic usage of the code. The ```optimizer.cpp``` demonstrate an automated brute-force approach to find the ideal parameters of the CCM in order to obtain the best result - in this case defined as a lowest FWHM for given peak. 
 
+
+# How to use the code
+## TL;DR - basics
+Algorithm requires following inputs:
+- time (X axis) vs energy (Y axis) matrix (TEMAT),
+- reference time window,
+- at least one Region Of Interest (ROI),
+- at least one energy-correcting function.
+
+**TEMAT** is an input matrix with the data. It is required that the matrix has a time on X axis and energy on Y. Both energy- and time-binning are important parameters that significantly affects the resulting correction. It is advised to tune these for the best results.
+
+**Reference time window** denotes a single stretch of time, in which the energy is stable/do not vary in time. It is advised to make reference time window as wide as possible.
+
+Similar to energy calibration, **ROI** defines the energy region which is used to obtain energy shift in order to convert "old" energy to "aligned" energy using the **correction function**. It should encapsulate a peak or another spectral feature that is used to evaluate offsets. Energies are aligned to the ones defined by the reference time window. Multiple ROIs can be defined. Each ROI is defined by
+- energy window that completely encapsules a peak or spectral feature you are using for alignment. Window doesn't need to be symmetric, I used usually 50-100 bin wide window.
+- energy displacement window that should be at least slightly larger then maximum energy offset of the peak/spectral feature.
+- pointer to TEMAT to perform bin conversions
+
+
+**Correction function** is an equivalent to the function used for energy calibration. Usually, simple polynomial ```0 + [1]*x``` is sufficient for HPGe detectors. It must given as TF1 object that **MUST be build using TFormula constructor**, e.g.:
+
+```cpp
+TF1 fcn("gain_fcn", "[0]*x", 0, 4000); // range can be arbitrary, it is set by CCM
+TF1 f("my_fcn","[0] + sqrt(x)*[1] + x*[2]", 0 ,1); 
 ```
-default_fit_function
+Multiple correction function can be specified, correction is performed with the first function that has number of degrees of freedom equal or less then number valid ROIs. 
+
+Once these objects are set, it is necessary to call ```CalculateEnergyShifts(int nthreads)``` function that determine the energy offsets of ROIs for each time-bin of the TEMAT. Correction, or pseudo-energy-calibration functions for each time-slice is calculated by calling ```PerformFits( bool valid_only, bool use_spline)``` After that is done, it is up to you to decide what output do you prefer, see next sections.
+***
+## Results
+To evaluate effectiveness of the CCM, the fastest way is [matrix correction](#matrix-corrections). It is useful especially for evaluation of the best parameters for CCM. 
+
+CCM can also apply corrections for an arbitrary new [TTree](#tree-corrections).
+
+Further, [text-based tables](#table-corrections) can be produced containing either just the shifts of each ROI, or a complete "recipe" containing list of correction functions and their parameters for each time period. 
+
+Lastly, more complete set of results can be also saved into [CCM ROOT file](#root-file).
+### Matrix corrections
+
+The most basic output of the  ```CCM fix(...)``` object can be produced by correcting the input matrix
+```cpp
+TH2D *fixed_matrix = fix.FixMatrix();
 ```
 
-- table body:
+Another way to fix the matrix is to utilize [spline interpolation](#spline-interpolation). To use it, one needs to create an identical matrix (data-wise) to original TEMAT, but with finer binning and pass it to the 
+```cpp
+TH2D *FixMatrix(const TH2D *input_mat, const bool valid_only = true)
+``` 
+function. [Spline interpolation](#spline-interpolation) is used to evaluate energy offsets for additional time bins. 
 
+### Tree corrections
+Event by event corrections can be applied by user-supplied TTree. CCM creates a clone of the tree (including unused branches) and apply correction on the content of the energy branch. TTree is expected to contain a single-value branches for time(stamp) and energy. For enhanced corrections a [spline interpolation](#spline-interpolation) can be used by specifying ```time_subdivision``` parameter, which essentially divides the range of each time-bin of the TEMAT into given number of sub-ranges with unique correction function.  
+
+```cpp
+void FixTree(const std::string &tfilename, const std::string &treename, const std::string &e_branchname,
+                         const std::string &ts_branchname, const bool valid_only = true,
+                         const int time_subdivision = 1);
 ```
-timeBin_testSpectrum1  usedFitFcn fit_par_0  fit_par_1  fit_par_2 ...
-timeBin_testSpectrum2  usedFitFcn fit_par_0  fit_par_1  fit_par_2 ...
-...
+### Table corrections
+#### Shift table
+
+Shift table is created by calling 
+```cpp
+void SaveShiftTable(const std::string &table_filename);
+```
+in following format (written also in the table)
+```
+# number of ROIs (regions of interest) in the matrix
+# desired_energy_ROI0 desired_energy_ROI1 ...
+#########
+# time_bin time_start time_end ROI0_ok ROI0_shift ROI1_ok ROI1_shift ...
 ```
 
-**void FixMatrix()**
-- crates corrected copy of the time-energy matrix in *CCM_files/result.root*
+#### Fit table
+Fit table is created by calling
+```cpp
+void SaveFitTable(const std::string &data_filename, const std::string &detector_name)
+```
+in following format (written also in the table)
+```
+# detector_name
+# time range covered by this file
+# number of correction functions used
+# fcn_name number_of_parameters function_equation(TFormula style)
+##############################
+# time_start time_stop fcn_name number_of_parameters par0 par1 ...
+```
 
-**void FixTree(char* TFile_name, TTree* tree, char* e_branch, char* t_branch)**
-- crates corrected tree
-- *TFile_name* - name the file for the new tree
-- *tree* - pointer to the tree carrying the data
-- *e_branch* - name of the energy branch in the *tree*
-- *t_branch* - name of the time branch in the *tree*
+#### ROOT file
 
- 
+A ROOT file containing the most detailed information about of the calculations can be created by calling
+```cpp
+void SaveToRootFile(const std::string &outroot_file = "ccm_output.root");
+```
+It contains 
+- original TEMAT,
+- corrected TEMAT (if created), 
+- TTree for each ROI,
+- list of TF1 correction functions used for energy corrections,
+- TTree with parameters for energy corrections for each time bin of original TEMAT.
+
+The ROI trees grants access to full information on the cross-correlation method used to evaluate energy shift for all time bins of original TEMAT. This includes:
+- *fit_valid*; flag for validity of the calculated shift,
+- *bin_shift*; shift in "bin-energy values",
+- *energy_shift*; shift in energy units,
+- *dot_product*; value of maximum dot product, 
+- *dp_vector*; n-dimensional vector of dot products calculated between reference vector and test vector (n-dimension = number of shifts of test vector),
+- *gfit_chi2*; chi2 of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,
+- *gfit_sigma*; sigma of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,  
+- *gfit_mu*; mu of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,
+- *time*; time
 
 
+***
+# More detailed description
+## Calculating displacement
 
+As mentioned in the NIM paper, the maximum dot product for a set of displacement of a given ROI-vector and reference-vector yields only integer value, which provides only limited precision. A floating point value can be obtained by performing a fit of the dot product distribution. However, precise fit would require apriori knowledge of the analytical function resulting from convolution of the "spectral features" (defined in the ROI bounds) with itself, but this is not possible to achieve in general. Therefore, a simple *pol2* fit of 9 points around the maximum dot product and floating point value of the shift is calculated from the maximum of the fitted function. 
+
+Although it is not possible to know analytical function describing the convolution, it is reasonable to expect that resulting dot product distribution is peak-shaped. Therefore, a Gaussian fit of limited number of values around the maximum is performed in addition to the polynomial but it is not used as a default value of the shift. This can be changed by calling 
+```cpp
+void UseGaussianResult();
+```
+
+
+## Validity of the calculated shift
+By default all shifts are marked as valid, unless the energy projection of given time-bin is 0; such bins are expected as one wants to make sure that all the data are inside the matrix. 
+
+User can however mark some shifts as invalid manually by calling 
+```cpp
+void SetInvalidResult(const int ROI_no, const int time_index);
+```
+where the input is the ROI number (indexing from 0) and the index of time-projected spectrum (index from 0, basically bin number minus 1). The decision can be made based on the data stored in the ```ResCont``` structure obtained by calling 
+```cpp
+const ResCont *GetResultContainer(const int ROI_no, const int time_index);
+```
+Function returns ```nullptr``` in case of wrong inputs. This container holds 
+- *fit_valid*; flag for validity of the calculated shift,
+- *bin_shift*; shift in "bin-energy values",
+- *energy_shift*; shift in energy units,
+- *dot_product*; value of maximum dot product, 
+- *dp_vector*; n-dimensional vector of dot products calculated between reference vector and test vector (n-dimension = number of shifts of test vector)
+
+Moreover, it contain also details on Gaussian fit of the dp_vector points around the dot product maximum. As mentioned in the previous section, it is not possible to know analytical function describing the convolution, however it is reasonable to expect that resulting dot product distribution is peak-shaped. Therefore, a Gaussian fit of limited number of values around the maximum is reasonable. Idea behind this is that values like chi2 and sigma should be within a reasonable range - you can see this by quickly plotting them (individually for each ROI) from the [ROOT file](#root-file). The list of variables available in the *ResCont* are 
+
+- *gfit_chi2*; chi2 of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,
+- *gfit_sigma*; sigma of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,  
+- *gfit_mu*; mu of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,
+- *time*; time
+
+## Spline interpolation
+Simply put, what this any any other code for time correction does, is that it subdivides the data set into smaller ones and "recalibrate" them individually. In case of CCM, the subdivision is given by the number of time-bins of the TEMAT. Number of time-bins/subdivisions is however limited by available statistics. 
+
+The observed time instability is (at least in my experience) usually continuous (see exception in the example data). If that is the case, it can be used to our advantage: for a given ROI, we can interpolate between the calculated shifts to artificially obtain much higher subdivision in time. If enabled, the new "artificial" shifts are calculated using a *TSpline3*, which is constructed from the available data. The spline can be also used to replace [invalid shifts](validity-of-the-calculated-shift), but only if there exist valid points around it (in lower and higher time slices). Spline is never used to extrapolate the values outside of the first and last valid time range (given by time of the respective bin centers).
 	
+## Own reference vector
+
+In case you need to correct multiple detectors with same properties (e.g. gamma detectors in an array) you manually set your reference vector used in the calculations by calling
+```cpp
+void SetReferenceVector(const std::vector<double> &own_reference_vector)
+```
+
+
+## Fitter
+In the source files I added "my" pure C++ fitter using the Theuerkauf peak model used in the [HDTV program](https://github.com/janmayer/hdtv/tree/master). Large part of the fitter code is borrowed from there.
