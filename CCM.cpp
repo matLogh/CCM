@@ -143,11 +143,14 @@ void CCM::SetFallbackCorrectionFunction(const TF1 &fcn, const std::string &fit_o
     {
         throw std::runtime_error("Error! Primary function not set, it needs to be set first!");
     }
-    if (fCorrectionFunctions.back().first->GetNpar() <= fcn.GetNpar())
+
+    auto it = std::find_if(fCorrectionFunctions.begin(), fCorrectionFunctions.end(),
+                           [&fcn](const auto &f) { return fcn.GetNpar() == f.first->GetNpar(); });
+    if (it != fCorrectionFunctions.end())
     {
-        throw std::runtime_error(
-            "Error! New fallback function has more or equal number of parameters then previous function!");
+        throw std::runtime_error("Error! Function with the same number of parameters already exists!");
     }
+
     for (const auto &f : fCorrectionFunctions)
     {
         if (strcmp(f.first->GetName(), fcn.GetName()) == 0)
@@ -162,7 +165,7 @@ void CCM::SetFallbackCorrectionFunction(const TF1 &fcn, const std::string &fit_o
     fCorrectionFunctions.emplace_back(std::make_pair(fclone, fit_options + "NQ"));
 
     std::sort(fCorrectionFunctions.begin(), fCorrectionFunctions.end(),
-              [](const auto &a, const auto &b) { return a.first->GetNpar() < b.first->GetNpar(); });
+              [](const auto &a, const auto &b) { return a.first->GetNpar() > b.first->GetNpar(); });
 }
 
 void CCM::CopyMatrixContent(TH2D *matrix)
@@ -513,7 +516,7 @@ void CCM::SaveFitTable(const std::string &data_filename, const std::string &dete
     for (int time_index = 0; time_index < V.time_bins; time_index++)
     {
         output << V.TEMAT->GetXaxis()->GetBinLowEdge(time_index + 1) << '\t'
-               << V.TEMAT->GetXaxis()->GetBinLowEdge(time_index + 1) << '\t';
+               << V.TEMAT->GetXaxis()->GetBinUpEdge(time_index + 1) << '\t';
         output << FitVec[time_index].functionUsed << '\t' << FitVec[time_index].coef.size() << '\t';
         for (int i = 0; i < FitVec[time_index].coef.size(); i++)
         {
