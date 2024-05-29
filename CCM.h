@@ -78,6 +78,17 @@ class CCM
     void SaveToRootFile(const std::string &outroot_file = "ccm_output.root");
 
     const ResCont *GetResultContainer(const int ROI_no, const int time_index) const noexcept;
+
+    const int GetNumberOfTimeIndices() const noexcept
+    {
+        return fXbins;
+    };
+
+    const int GetNumberOfROIs() const noexcept
+    {
+        return V.number_of_ROIs;
+    };
+
     void SetInvalidResult(const int ROI_no, const int time_index);
     void UseGaussianResult();
 
