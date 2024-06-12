@@ -120,13 +120,13 @@ class CCM
     /// calculated shifts using smoothing functions or set own interpolation. If valid_only is set to true, only valid
     /// ROIs are shown
     /// @param roi_index ROI number to be shown
-    /// @param valid_only
-    TGraph GetROIShifts(const int roi_index, const bool valid_only = true);
+    /// @param valid_only user is owner of the returned TGraph
+    TGraph *GetROIShifts(const int roi_index, const bool valid_only = true);
 
     /// @brief Get shifts for all ROIs at given time. Useful for determination of ideal correction/calibration function.
     /// @param time_bin
-    /// @return
-    TGraph GetShiftProfile(const int time_bin, const bool valid_only = true);
+    /// @return user is owner of the returned TGraph
+    TGraph *GetShiftProfile(const int time_bin, const bool valid_only = true);
 
   private:
     int fXbins;

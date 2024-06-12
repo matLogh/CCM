@@ -173,11 +173,11 @@ void CCM::SetFallbackCorrectionFunction(const TF1 &fcn, const std::string &fit_o
               [](const auto &a, const auto &b) { return a.first->GetNpar() > b.first->GetNpar(); });
 }
 
-TGraph CCM::GetROIShifts(const int roi_index, const bool valid_only)
+TGraph *CCM::GetROIShifts(const int roi_index, const bool valid_only)
 {
-    TGraph gr;
-    gr.SetBit(TGraph::kIsSortedX);
-    gr.SetName(Form("shift_ROI_%i", roi_index));
+    TGraph *gr = new TGraph();
+    gr->SetBit(TGraph::kIsSortedX);
+    gr->SetName(Form("shift_ROI_%i", roi_index));
 
     for (int time = 0; time < V.time_bins; time++)
     {
@@ -185,16 +185,16 @@ TGraph CCM::GetROIShifts(const int roi_index, const bool valid_only)
         {
             continue;
         }
-        gr.AddPoint(GetMatrixTime(time), ResVec[roi_index][time].bin_shift);
+        gr->AddPoint(GetMatrixTime(time), ResVec[roi_index][time].bin_shift);
     }
     return gr;
 }
 
-TGraph CCM::GetShiftProfile(const int time_bin, const bool valid_only)
+TGraph *CCM::GetShiftProfile(const int time_bin, const bool valid_only)
 {
-    TGraph gr;
-    gr.SetBit(TGraph::kIsSortedX);
-    gr.SetTitle(Form("%i", time_bin));
+    TGraph *gr = new TGraph();
+    gr->SetBit(TGraph::kIsSortedX);
+    gr->SetTitle(Form("%i", time_bin));
     for (int roi_index = 0; roi_index < V.number_of_ROIs; roi_index++)
     {
         if (ResVec[roi_index][time_bin].isValid)
@@ -203,11 +203,11 @@ TGraph CCM::GetShiftProfile(const int time_bin, const bool valid_only)
             {
                 continue;
             }
-            gr.AddPoint(V.ROIs[roi_index].desired_energy, ResVec[roi_index][time_bin].bin_shift);
+            gr->AddPoint(V.ROIs[roi_index].desired_energy, ResVec[roi_index][time_bin].bin_shift);
         }
     }
-    gr.SetMarkerColor(kRed);
-    gr.SetMarkerStyle(20);
+    gr->SetMarkerColor(kRed);
+    gr->SetMarkerStyle(20);
     return gr;
 }
 
