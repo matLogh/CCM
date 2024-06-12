@@ -21,6 +21,11 @@ class CCM
     CCM(const TH2D &matrix, const std::vector<Region_of_interest> &_ROIs, const double reference_time_low,
         const double reference_time_high);
 
+    /// @brief Constructor for CCM class with input parameters for all ROIs (regions of interest), that are used for
+    /// corrections. If you use this constructor, you HAVE TO provide reference vectors using
+    /// SetReferenceProjection(...) SetReferenceVector(...) functions, see their documentation for more details.
+    CCM(const TH2D &matrix, const std::vector<Region_of_interest> &_ROIs);
+
     ~CCM();
     /// @brief Calculates offsets/displacements
     /// @param fNthreads
@@ -124,8 +129,6 @@ class CCM
     TGraph GetShiftProfile(const int time_bin, const bool valid_only = true);
 
   private:
-    int fSampleTimeStart;
-    int fSampleTimeEnd;
     int fXbins;
     int fYbins;
 
@@ -141,12 +144,11 @@ class CCM
     ResCont **ResVec;
     FitCont *FitVec;
 
-    inline void DeleteSampleVectors()
-    {
-        V.sample_vector.clear();
-    };
+    void CheckReferenceVector(int ROI_index);
+    void CheckReferenceVectors();
+
     void CopyMatrixContent(TH2D *matrix);
-    void CreateSampleVector(const int ROI_index, const double ROI_time_low, const double ROI_time_high);
+    void CreateReferenceVector(const int ROI_index, const double ROI_time_low, const double ROI_time_high);
     void Normalize(std::vector<double> &v);
     std::pair<TF1 *, std::string> *FindCorrectionFunction(const int nrois);
 
