@@ -44,12 +44,22 @@ double useless_function(double *x, double *par)
 
 CCM::CCM(const TH2D &matrix, const std::vector<Region_of_interest> &_ROIs, const double reference_time_low,
          const double reference_time_high)
+    : CCM(matrix, _ROIs)
 {
+
+    // create sample_vector
+    for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
+    {
+        this->CreateReferenceVector(ROI_index, reference_time_low, reference_time_high);
+    }
+}
+
+CCM::CCM(const TH2D &matrix, const std::vector<Region_of_interest> &_ROIs)
+{
+
     V.TEMAT = dynamic_cast<TH2D *>(matrix.Clone(Form("%s_clone", matrix.GetName())));
     fXbins = matrix.GetXaxis()->GetNbins();
     fYbins = matrix.GetYaxis()->GetNbins();
-    fSampleTimeStart = reference_time_low / matrix.GetXaxis()->GetBinWidth(1) + 1;
-    fSampleTimeEnd = reference_time_high / matrix.GetXaxis()->GetBinWidth(1) + 1;
 
     for (const auto &roi : _ROIs)
     {
@@ -60,11 +70,6 @@ CCM::CCM(const TH2D &matrix, const std::vector<Region_of_interest> &_ROIs, const
     V.number_of_ROIs = _ROIs.size();
     V.total_tasks = fXbins * V.number_of_ROIs;
     V.time_bins = fXbins;
-    // create sample_vector
-    for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
-    {
-        this->CreateSampleVector(ROI_index, reference_time_low, reference_time_high);
-    }
 
     // reserve space for result container structure
     ResVec = new ResCont *[V.number_of_ROIs];
@@ -237,7 +242,7 @@ void CCM::CopyMatrixContent(TH2D *matrix)
     }
 }
 
-void CCM::CreateSampleVector(const int ROI_index, const double sample_time_low, const double sample_time_high)
+void CCM::CreateReferenceVector(const int ROI_index, const double sample_time_low, const double sample_time_high)
 {
     std::vector<double> vec(V.ROIs[ROI_index].vector_dimension);
 
@@ -276,6 +281,7 @@ void CCM::Normalize(std::vector<double> &v)
 
 void CCM::CalculateEnergyShifts(const unsigned int threads)
 {
+    this->CheckReferenceVectors();
     fNthreads = threads;
 
     std::vector<std::thread> t;
@@ -1160,12 +1166,15 @@ void CCM::SetReferenceVector(const unsigned int ROI_index, const std::vector<dou
     {
         throw std::runtime_error("ROI index out of bounds");
     }
-    if (own_reference_vector.size() != V.sample_vector[ROI_index].size())
+
+    int vsize = V.ROIs[ROI_index].bin_window_high - V.ROIs[ROI_index].bin_window_low;
+
+    if (own_reference_vector.size() != vsize)
     {
         throw std::runtime_error("Reference vector size does not match expected sample vector size");
     }
-    memcpy(V.sample_vector[ROI_index].data(), own_reference_vector.data(),
-           own_reference_vector.size() * sizeof(double));
+    V.sample_vector[ROI_index].clear();
+    V.sample_vector[ROI_index] = own_reference_vector;
 
     this->Normalize(V.sample_vector[ROI_index]);
 }
@@ -1183,5 +1192,23 @@ void CCM::SetReferenceProjection(const TH1 *projection)
         }
         this->Normalize(vec);
         V.sample_vector.emplace_back(std::move(vec));
+    }
+}
+
+void CCM::CheckReferenceVector(int ROI_index)
+{
+    int vsize = V.ROIs[ROI_index].bin_window_high - V.ROIs[ROI_index].bin_window_low;
+
+    if (V.sample_vector[ROI_index].size() != vsize)
+    {
+        throw std::runtime_error("Reference vector not set for ROI " + std::to_string(ROI_index));
+    }
+}
+
+void CCM::CheckReferenceVectors()
+{
+    for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
+    {
+        this->CheckReferenceVector(ROI_index);
     }
 }
