@@ -2,8 +2,11 @@
 #include <tuple>
 #include <vector>
 
+#include "TMultiGraph.h"
 #include "TSpline.h"
 #include "TTree.h"
+
+// #include "CCMInterpolator.h"
 #include "variables.h"
 
 class CCM
@@ -19,7 +22,8 @@ class CCM
         const double reference_time_high);
 
     ~CCM();
-    // void StartCCM();
+    /// @brief Calculates offsets/displacements
+    /// @param fNthreads
     void CalculateEnergyShifts(const unsigned int fNthreads = 8);
 
     void AutoRules(int ROI, double sigma_width_acceptance = 3, double dp_width_acceptance = 3);
@@ -40,11 +44,11 @@ class CCM
 
     void SaveShiftTable(const std::string &table_filename = "shift_table.dat");
 
-    /// @brief From offsets calculate the correction functions for each time slice. If valid_only is set to true, only
-    /// ROIs marked as valid are used. In case of valid_only=true AND a ROI is marked as invalid AND it is possible to
-    /// interpolate invalid ROI offset from neighbors using TSpline5 (only in case they exist and are valid). In case a
-    /// number of valid ROIs is lower then the number of primary function parameters, a first fallback function with
-    /// npar=nROIs is used.
+    /// @brief From ROI displacements calculates the correction functions for each time slice. If valid_only is set to
+    /// true, only ROIs marked as valid are used. In case of valid_only=true AND a ROI is marked as invalid AND it is
+    /// possible to interpolate invalid ROI offset from neighbors using TSpline5 (only in case they exist and are
+    /// valid). In case a number of valid ROIs is lower then the number of primary function parameters, a first fallback
+    /// function with npar=nROIs is used.
     /// @param valid_only
     /// @param use_spline
     void PerformFits(const bool valid_only = true, const bool use_spline = false);
@@ -90,12 +94,34 @@ class CCM
     };
 
     void SetInvalidResult(const int ROI_no, const int time_index);
+
+    /// @brief Use Gaussian result instead of the polynomial one to get the shift
     void UseGaussianResult();
 
+    /// @brief Set reference projection for the shifts. This is useful if you want to use the same shifts for multiple
+    /// matrices. Be aware that this will work only if the defined ROI's are " behaving" the same in between the
+    /// matrices.
+    /// @param projection Projection of a matrix that is otherwise automatically generated using the reference time in
+    /// constructor
+    void SetReferenceProjection(const TH1 *projection);
+
     /// @brief Reference vector is calculated automatically from the matrix, but here you have an option to set it by
-    /// hand
+    /// hand for given ROI
+    /// @param ROI_index
     /// @param own_reference_vector
-    void SetReferenceVector(const std::vector<double> &own_reference_vector);
+    void SetReferenceVector(const unsigned int ROI_index, const std::vector<double> &own_reference_vector);
+
+    /// @brief Get all the shifts for selected ROI as a function of time. This is useful if you want to modify
+    /// calculated shifts using smoothing functions or set own interpolation. If valid_only is set to true, only valid
+    /// ROIs are shown
+    /// @param roi_index ROI number to be shown
+    /// @param valid_only
+    TGraph GetROIShifts(const int roi_index, const bool valid_only = true);
+
+    /// @brief Get shifts for all ROIs at given time. Useful for determination of ideal correction/calibration function.
+    /// @param time_bin
+    /// @return
+    TGraph GetShiftProfile(const int time_bin, const bool valid_only = true);
 
   private:
     int fSampleTimeStart;
@@ -106,6 +132,7 @@ class CCM
     TH2D *fFixedTEMAT{nullptr};
 
     std::vector<std::pair<TF1 *, std::string>> fCorrectionFunctions;
+    // std::vector<CCMInterpolator> fInterpolator;
 
     std::atomic<int> fThreadTask;
     int fNthreads;
@@ -131,4 +158,6 @@ class CCM
     {
         return V.TEMAT->GetXaxis()->GetBinCenter(time_slice_index + 1);
     };
+
+    void BuildInterpolators(const bool valid_only = true);
 };
