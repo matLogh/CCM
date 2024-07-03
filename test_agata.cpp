@@ -37,9 +37,10 @@ int main(int argc, char **argv)
     // auto duration = duration_cast<microseconds>(t2 - t1).count();
     // std::cout << "TOTAL DURATION OF " << duration / (double)1E6 << " seconds" << std::endl;
 
-    TFile *matfile = TFile::Open("/home/mbalogh/to_win/out_ext_1010.root", "READ");
-    TH2D *TEMAT = (TH2D *)matfile->Get("coreE0_TS/hE0_TS_0");
-    TEMAT->RebinX(20);
+    TFile *matfile = TFile::Open("/home/mbalogh/to_win/out_huge_00A_1010.root", "READ");
+    TH2D *TEMAT = (TH2D *)matfile->Get("hE0_TS_00A");
+    // TEMAT->RebinX(5);
+    // TEMAT->RebinY(2);
 
     TF1 fcn("gain_fcn", "[0]*x", 0, 4000);
 
@@ -53,45 +54,68 @@ int main(int argc, char **argv)
     // create CCM object
 
     std::vector<TH1 *> projections;
-    auto *t = new TBrowser;
     // t->Draw();
 
     CCM fix1(*TEMAT, ROIs, reference_time_bgn, reference_time_end);
     fix1.SetCorrectionFunction(fcn, "");
-    fix1.CalculateEnergyShifts(1);
-    fix1.PerformFits();
-    auto *TEMAT_new = fix1.FixMatrix();
-    auto *proj = TEMAT_new->ProjectionY();
-    proj->SetName("proj1");
-    proj->SetLineColor(kRed);
-    proj->Draw("SAME");
-    projections.emplace_back(proj);
-    fix1.SaveToRootFile("elia_roi1.root");
+    fix1.CalculateEnergyShifts(8);
+    fix1.UseGaussianResult();
 
-    ROIs.emplace_back(Region_of_interest(*TEMAT, 7600., 7700., -20., 20., 7639.)); // ROI1 is the region of interest
+    auto *gr_interpol = fix1.GetInterpolationGraph(0);
+    gr_interpol->Draw("ALP");
 
-    CCM fix2(*TEMAT, ROIs, reference_time_bgn, reference_time_end);
-    fix2.SetCorrectionFunction(fcn, "");
-    fix2.CalculateEnergyShifts(1);
-    fix2.PerformFits();
-    TEMAT_new = fix2.FixMatrix();
-    proj = TEMAT_new->ProjectionY();
-    proj->SetName("proj2");
-    proj->SetLineColor(kGreen);
-    proj->Draw("SAME");
-    projections.emplace_back(proj);
-    fix2.SaveToRootFile("elia_roi2.root");
+    fix1.SmoothShifts_KernelSmoother(0, 8.);
 
-    // TEMAT->GetYaxis()->SetRangeUser(7600, 7700);
-    // TEMAT_new->GetYaxis()->SetRangeUser(7600, 7700);
-    projections.emplace_back(TEMAT->ProjectionY());
-    projections.back()->Draw("SAME");
+    auto *gr_smooth_lowess = fix1.GetInterpolationGraph(0);
+    new TCanvas();
+    gr_smooth_lowess->Draw("ALP");
+    // theApp.Run();
 
-    TFile *outfile = TFile::Open("out.root", "RECREATE");
-    for (auto &p : projections)
-    {
-        p->Write();
-    }
+    gr_smooth_lowess->SetMarkerStyle(23);
+    gr_smooth_lowess->SetLineColor(4);
+    gr_smooth_lowess->SetLineWidth(1);
+    gr_smooth_lowess->SetFillStyle(0);
+    gr_smooth_lowess->SetDrawOption("ACP");
+
+    // for (int i = 20; i < fix1.GetNumberOfTimeIndices() / 2.; i++)
+    // {
+    //     fix1.SetInvalidResult(0, i);
+    // }
+
+    fix1.CalculateCorrectionFits();
+    // auto *TEMAT_new = fix1.FixMatrix();
+    // auto *TEMAT_new = fix1.FixMatrix();
+    // auto *TEMAT_new = fix1.FixMatrix(TEMAT_full);
+    // auto *proj = TEMAT_new->ProjectionY();
+    // proj->SetName("proj1");
+    // proj->SetLineColor(kRed);
+    // TEMAT->ProjectionY()->Draw();
+    // proj->Draw("SAME");
+    // projections.emplace_back(proj);
+    // fix1.SaveToRootFile("elia_roi1.root");
+    // new TCanvas();
+    auto *gr_points = fix1.GetROIShifts(0);
+    gr_points->SetMarkerStyle(22);
+    gr_points->SetLineColor(4);
+    gr_points->SetLineWidth(1);
+    gr_points->SetFillStyle(0);
+    gr_points->SetDrawOption("P");
+
+    gr_interpol->SetMarkerStyle(22);
+    gr_interpol->SetMarkerColor(2);
+    gr_interpol->SetDrawOption("AP");
+    gr_interpol->SetLineColor(3);
+    gr_interpol->SetLineWidth(2);
+    gr_interpol->SetFillStyle(0);
+
+    auto mg = new TMultiGraph;
+
+    mg->Add(gr_points);
+    mg->Add(gr_smooth_lowess);
+    // mg->Add(gr_interpol);
+    new TCanvas();
+
+    mg->Draw("APL");
 
     theApp.Run();
 

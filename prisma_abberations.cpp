@@ -96,7 +96,7 @@ int main(int argc, char **argv)
         }
     }
     // calculate the calibration functions
-    fix.PerformFits();
+    fix.CalculateCorrectionFits();
     fix.SaveFitTable();
 
     // get corrected matrix

@@ -128,4 +128,10 @@ struct FitCont
     std::vector<double> coef;
 };
 
+struct ShiftInterpolator
+{
+    TGraph valid_points;
+    // TGraph invali
+};
+
 #endif

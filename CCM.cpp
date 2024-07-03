@@ -34,6 +34,7 @@ list of throw exceptions:
 
 #include "CCM.h"
 // #include "CheckCCM.h"
+#include "../../../usr/include/c++/12/bits/stl_map.h"
 #include "Cross_correlation.h"
 #include "variables.h"
 
@@ -78,7 +79,7 @@ CCM::CCM(const TH2D &matrix, const std::vector<Region_of_interest> &_ROIs)
         ResVec[ROI] = new ResCont[V.time_bins];
     }
     // reserve space for fit container - fit results and other variables
-    FitVec = new FitCont[V.time_bins];
+    // FitVec = new FitCont[V.time_bins];
     this->CopyMatrixContent(V.TEMAT);
 }
 
@@ -92,7 +93,7 @@ CCM::~CCM()
         delete[] ResVec[ROI];
     }
     delete[] ResVec;
-    delete[] FitVec;
+    // delete[] FitVec;
 
     for (auto i = 0; i < V.number_of_ROIs; i++)
     {
@@ -178,6 +179,7 @@ TGraph *CCM::GetROIShifts(const int roi_index, const bool valid_only)
     TGraph *gr = new TGraph();
     gr->SetBit(TGraph::kIsSortedX);
     gr->SetName(Form("shift_ROI_%i", roi_index));
+    gr->SetTitle(Form("shifts for ROI %i;Time;Energy shift", roi_index));
 
     for (int time = 0; time < V.time_bins; time++)
     {
@@ -185,7 +187,7 @@ TGraph *CCM::GetROIShifts(const int roi_index, const bool valid_only)
         {
             continue;
         }
-        gr->AddPoint(GetMatrixTime(time), ResVec[roi_index][time].bin_shift);
+        gr->AddPoint(GetMatrixTime(time), ResVec[roi_index][time].energy_shift);
     }
     return gr;
 }
@@ -321,8 +323,7 @@ void CCM::CalculateEnergyShifts(const unsigned int threads)
     for (auto &th : t)
         th.join();
 
-    std::cout << std::endl;
-    std::cout << "Done" << std::endl;
+    this->BuildInterpolators();
 }
 
 void CCM::SaveToRootFile(const std::string &outroot_file)
@@ -374,9 +375,10 @@ void CCM::SaveToRootFile(const std::string &outroot_file)
         for (int time_bin = 0; time_bin < V.time_bins; time_bin++)
         {
             time = this->GetMatrixTime(time_bin);
+            auto fit = this->CalculateCorrectionFit(time);
             // first zero out params
-            fcn_name = FitVec[time_bin].functionUsed;
-            fcn_coefs = FitVec[time_bin].coef;
+            fcn_name = fit.functionUsed;
+            fcn_coefs = fit.coef;
             t->Fill();
         }
         file.cd();
@@ -430,33 +432,150 @@ void CCM::SaveShiftTable(const std::string &table_filename)
     }
 }
 
-// void CCM::BuildInterpolators(const bool valid_only)
-// {
-//     for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
-//     {
-//         bool graph_defined = std::find(fInterpolator.begin(), fInterpolator.end(),
-//                                        [&](const CCMInterpolator &x) { return x.GetROI() == ROI_index; }
+void CCM::BuildInterpolator(const int ROI_index)
+{
+    if (ROI_index >= V.number_of_ROIs)
+    {
+        throw std::runtime_error("Error! ROI index out of range!");
+    }
+    // if does exist, reset content
+    if (fInterpolator.find(ROI_index) != fInterpolator.end())
+    {
+        fInterpolator.at(ROI_index).Reset();
+    }
+    // if doesnt exist, create default interpolator
+    else
+    {
+        // fInterpolator[ROI_index] = CCMInterpolator(fDEFAULT_INTERPOLATOR, true);
+        fInterpolator.insert(std::make_pair(ROI_index, CCMInterpolator(fDEFAULT_INTERPOLATOR, true)));
+    }
+    // fill with values
+    for (int time_index = 0; time_index < V.time_bins; time_index++)
+    {
+        fInterpolator.at(ROI_index).AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
+                                             ResVec[ROI_index][time_index].energy_shift,
+                                             ResVec[ROI_index][time_index].isValid);
+    }
+}
 
-//                                        ) == fInterpolator.end();
-//         if (graph_defined)
-//             continue;
-//         fInterpolator.emplace_back(ROI_index);
-//         for (int time_index = 0; time_index < V.time_bins; time_index++)
-//         {
-//             if (valid_only)
-//             {
-//                 fInterpolator.back().AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
-//                                               ResVec[ROI_index][time_index].energy_shift,
-//                                               ResVec[ROI_index][time_index].isValid);
-//             }
-//             else
-//             {
-//                 fInterpolator.back().AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
-//                                               ResVec[ROI_index][time_index].energy_shift, true);
-//             }
-//         }
-//     }
-// }
+void CCM::BuildInterpolators()
+{
+
+    for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
+    {
+        this->BuildInterpolator(ROI_index);
+    }
+
+    fCorrectionFits.clear();
+    fInterpolatorReset = false;
+}
+
+void CCM::ConfigureShiftInterpolator(const int ROI_index, const std::string type, const bool valid_only)
+{
+    if (ROI_index >= V.number_of_ROIs)
+    {
+        throw std::runtime_error("Error! ROI index out of range!");
+    }
+
+    // fInterpolator[ROI_index] = CCMInterpolator(type, valid_only);
+    fInterpolator.insert_or_assign(ROI_index, CCMInterpolator(type, valid_only));
+}
+
+void CCM::DisableInterpolation(const int ROI_index)
+{
+    if (ROI_index >= V.number_of_ROIs)
+    {
+        throw std::runtime_error("Error! ROI index out of range!");
+    }
+
+    if (fInterpolator.find(ROI_index) == fInterpolator.end())
+    {
+        fInterpolator.insert(std::make_pair(ROI_index, CCMInterpolator(fDEFAULT_INTERPOLATOR, true)));
+    }
+
+    fInterpolator.at(ROI_index).DisableInterpolation();
+}
+
+void CCM::EnableInterpolation(const int ROI_index)
+{
+    if (ROI_index >= V.number_of_ROIs)
+    {
+        throw std::runtime_error("Error! ROI index out of range!");
+    }
+
+    if (fInterpolator.find(ROI_index) == fInterpolator.end())
+    {
+        fInterpolator.insert(std::make_pair(ROI_index, CCMInterpolator(fDEFAULT_INTERPOLATOR, true)));
+    }
+
+    fInterpolator.at(ROI_index).EnableInterpolation();
+}
+
+const FitCont CCM::CalculateCorrectionFit(const double time)
+{
+    if (fCorrectionFits.find(time) != fCorrectionFits.end())
+    {
+        return fCorrectionFits.at(time);
+    }
+    if (fInterpolatorReset)
+        BuildInterpolators();
+
+    FitCont fit_result;
+
+    std::vector<double> x;
+    std::vector<double> y;
+
+    for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
+    {
+        if (fInterpolator.at(ROI_index).IsValueValid(time))
+        {
+            x.push_back(V.ROIs[ROI_index].desired_energy);
+            y.push_back(V.ROIs[ROI_index].desired_energy - fInterpolator.at(ROI_index).Eval(time));
+        }
+    }
+    std::pair<TF1 *, std::string> *fcn = this->FindCorrectionFunction(x.size());
+
+    if (strcmp(fcn->first->GetName(), "empty_function") == 0)
+    {
+        fit_result.functionUsed = "empty_function";
+        return fit_result;
+    }
+    TGraph gr(x.size(), x.data(), y.data());
+    gr.Fit(fcn->first, fcn->second.c_str());
+    fit_result.functionUsed = fcn->first->GetName();
+    for (int i = 0; i < fcn->first->GetNpar(); i++)
+    {
+        fit_result.coef.emplace_back(fcn->first->GetParameter(i));
+    }
+    return fit_result;
+}
+
+void CCM::CalculateCorrectionFits(int time_subdivision)
+{
+    if (V.number_of_ROIs == 0)
+    {
+        throw std::runtime_error("No ROIs added to the CCM object");
+    }
+    if (time_subdivision < 1)
+    {
+        throw std::runtime_error("Error! Time subdivision must be greater than 0!");
+    }
+
+    const double step = V.TEMAT->GetXaxis()->GetBinWidth(1) / (double)(time_subdivision - 1);
+    double time;
+    for (int time_index = 0; time_index < V.time_bins; time_index++)
+    {
+        fCorrectionFits[V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1)] = this->CalculateCorrectionFit(time_index);
+        time = V.TEMAT->GetXaxis()->GetBinLowEdge(time_index + 1);
+        while (time <= V.TEMAT->GetXaxis()->GetBinUpEdge(time_index + 1))
+        {
+            fCorrectionFits[time] = this->CalculateCorrectionFit(time);
+            time += step;
+        }
+    }
+
+    fFitDone = true;
+}
 
 // void CCM::PerformFits(const bool valid_only, const bool use_spline)
 // {
@@ -561,107 +680,6 @@ void CCM::SaveShiftTable(const std::string &table_filename)
 //     fFitDone = true;
 // }
 
-void CCM::PerformFits(const bool valid_only, const bool use_spline)
-{
-    if (V.number_of_ROIs == 0)
-    {
-        throw std::runtime_error("No ROIs added to the CCM object");
-    }
-
-    int nrois;
-    double x[V.number_of_ROIs];
-    double y[V.number_of_ROIs];
-
-    std::vector<TGraph> roi_graphs;
-    std::vector<TSpline3> roi_splines;
-
-    // prepare splines if needed
-    if (use_spline)
-    {
-        for (int time_index = 0; time_index < V.time_bins; time_index++)
-        {
-            roi_graphs.emplace_back();
-            roi_graphs.back().SetName(Form("ROI_%i", roi_graphs.size() - 1));
-            roi_graphs.back().SetTitle(
-                Form("ROI_%i; time slice index; energy shift [energy units]", roi_graphs.size() - 1));
-            for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
-            {
-                if (valid_only && !ResVec[ROI_index][time_index].isValid)
-                    continue;
-                roi_graphs.back().AddPoint(time_index, V.ROIs[ROI_index].desired_energy +
-                                                           ResVec[ROI_index][time_index].energy_shift);
-            }
-        }
-        for (auto &gr : roi_graphs)
-        {
-            roi_splines.emplace_back(Form("spline_%s", gr.GetName()), &gr);
-        }
-    }
-
-    for (int time_index = 0; time_index < V.time_bins; time_index++)
-    {
-        nrois = 0;
-
-        for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
-        {
-            // ResVec[ROI_index][time_index].print();
-            if (valid_only && ResVec[ROI_index][time_index].isValid)
-            {
-                x[nrois] = V.ROIs[ROI_index].desired_energy;
-                y[nrois] = V.ROIs[ROI_index].desired_energy - ResVec[ROI_index][time_index].energy_shift;
-                nrois++; // get number of good points
-            }
-            else if (use_spline)
-            {
-                x[nrois] = V.ROIs[ROI_index].desired_energy;
-                y[nrois] = V.ROIs[ROI_index].desired_energy - roi_splines[ROI_index].Eval(time_index);
-                nrois++;
-            }
-        }
-
-        std::pair<TF1 *, std::string> *fcn = nullptr; // TF1 *fcn{nullptr};
-        for (auto &f : fCorrectionFunctions)
-        {
-            if (nrois >= f.first->GetNpar())
-            {
-                fcn = &f;
-                break;
-            }
-        }
-        // if (fcn->first == nullptr)
-        // {
-        //     auto min =
-        //         std::min_element(fCorrectionFunctions.begin(), fCorrectionFunctions.end(),
-        //                          [](const auto &a, const auto &b) { return a.first->GetNpar() < b.first->GetNpar();
-        //                          });
-        //     std::cerr
-        //         << "No suitable function found for time slice " << time_index << ", this slice has in total " <<
-        //         nrois
-        //         << " valid ROIs available to fit, but smallest minimum degree of freedom from provided functions is "
-        //         << (*min).first->GetNpar() << std::endl;
-        //     std::cerr << "skipping slice" << std::endl;
-        //     continue;
-        // }
-
-        if (strcmp(fcn->first->GetName(), "empty_function") == 0)
-        {
-            FitVec[time_index].functionUsed = "empty_function";
-            continue;
-        }
-        TGraph gr(nrois, x, y);
-        gr.Fit(fcn->first, fcn->second.c_str());
-        FitVec[time_index].functionUsed = fcn->first->GetName();
-        for (int i = 0; i < fcn->first->GetNpar(); i++)
-        {
-            // std::cout << std::setprecision(6) << "par[" << i << "] = " << fcn->first->GetParameter(i) << std::endl;
-            FitVec[time_index].coef.emplace_back(fcn->first->GetParameter(i));
-        }
-    }
-
-    // SaveFitTable(&V, FitVec);
-    fFitDone = true;
-}
-
 void CCM::SaveFitTable(const std::string &data_filename, const std::string &detector_name)
 {
     if (!fFitDone)
@@ -669,7 +687,7 @@ void CCM::SaveFitTable(const std::string &data_filename, const std::string &dete
         std::cerr << "Warning! PerformFits() function was not yet called, it will be called with default parameters "
                      "(valid only, no spline)"
                   << std::endl;
-        this->PerformFits();
+        this->CalculateCorrectionFits(1);
     }
 
     std::ofstream output;
@@ -690,12 +708,13 @@ void CCM::SaveFitTable(const std::string &data_filename, const std::string &dete
 
     for (int time_index = 0; time_index < V.time_bins; time_index++)
     {
+        auto fit = this->CalculateCorrectionFit(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1));
         output << V.TEMAT->GetXaxis()->GetBinLowEdge(time_index + 1) << '\t'
                << V.TEMAT->GetXaxis()->GetBinUpEdge(time_index + 1) << '\t';
-        output << FitVec[time_index].functionUsed << '\t' << FitVec[time_index].coef.size() << '\t';
-        for (int i = 0; i < FitVec[time_index].coef.size(); i++)
+        output << fit.functionUsed << '\t' << fit.coef.size() << '\t';
+        for (const auto c : fit.coef)
         {
-            output << FitVec[time_index].coef[i] << '\t';
+            output << c << '\t';
         }
         output << '\n';
     }
@@ -708,7 +727,7 @@ TH2D *CCM::FixMatrix()
         std::cerr << "Warning! PerformFits() function was not yet called, it will be called with default parameters "
                      "(valid only, no spline)"
                   << std::endl;
-        this->PerformFits();
+        this->CalculateCorrectionFits(1);
     }
 
     fFixedTEMAT = dynamic_cast<TH2D *>(V.TEMAT->Clone(Form("%s_corrected", V.TEMAT->GetName())));
@@ -724,11 +743,12 @@ TH2D *CCM::FixMatrix()
 
     for (int time_bin = 1; time_bin <= V.TEMAT->GetXaxis()->GetNbins(); time_bin++)
     {
+        auto fit = this->CalculateCorrectionFit(V.TEMAT->GetXaxis()->GetBinCenter(time_bin));
         // load function with parameters
         TF1 *fcn{nullptr};
         for (int i = 0; i < fCorrectionFunctions.size(); i++)
         {
-            if (FitVec[time_bin - 1].functionUsed == std::string(fCorrectionFunctions[i].first->GetName()))
+            if (fit.functionUsed == std::string(fCorrectionFunctions[i].first->GetName()))
             {
                 fcn = fCorrectionFunctions[i].first;
                 break;
@@ -737,14 +757,14 @@ TH2D *CCM::FixMatrix()
         if (fcn == nullptr)
         {
             throw std::runtime_error("No function found for time slice " + std::to_string(time_bin) + " with name " +
-                                     FitVec[time_bin - 1].functionUsed);
-        }
-        for (unsigned int i = 0; i < FitVec[time_bin - 1].coef.size(); i++)
-        {
-            fcn->SetParameter(i, FitVec[time_bin - 1].coef[i]);
+                                     fit.functionUsed);
         }
         if (strcmp(fcn->GetName(), "useless_function") == 0)
             continue;
+        for (unsigned int i = 0; i < fit.coef.size(); i++)
+        {
+            fcn->SetParameter(i, fit.coef[i]);
+        }
 
         // set bins
         for (int en_bin = 1; en_bin <= axis->GetNbins(); en_bin++)
@@ -812,7 +832,7 @@ TH2D *CCM::FixMatrix(const TH2D *input_mat, const bool valid_only)
         std::cerr << "Warning! PerformFits() function was not yet called, it will be called with default parameters "
                      "(valid only, no spline)"
                   << std::endl;
-        this->PerformFits();
+        this->CalculateCorrectionFits(1);
     }
 
     TH2D *fixed_mat = dynamic_cast<TH2D *>(input_mat->Clone(Form("%s_corrected", input_mat->GetName())));
@@ -1139,11 +1159,14 @@ const ResCont *CCM::GetResultContainer(const int ROI_no, const int time_index) c
         return nullptr;
     return &ResVec[ROI_no][time_index];
 }
+
 void CCM::SetInvalidResult(const int ROI_no, const int time_index)
 {
     if (ROI_no >= V.number_of_ROIs || time_index >= V.time_bins)
         throw std::runtime_error("ROI_no or time_index are not correct");
     ResVec[ROI_no][time_index].isValid = false;
+
+    fInterpolatorReset = true;
 }
 
 void CCM::UseGaussianResult()
@@ -1158,6 +1181,8 @@ void CCM::UseGaussianResult()
                 V.TEMAT->GetYaxis()->GetBinWidth(1) * ResVec[roi_index][time_index].bin_shift;
         }
     }
+
+    fInterpolatorReset = true;
 }
 
 void CCM::SetReferenceVector(const unsigned int ROI_index, const std::vector<double> &own_reference_vector)
@@ -1210,5 +1235,155 @@ void CCM::CheckReferenceVectors()
     for (int ROI_index = 0; ROI_index < V.number_of_ROIs; ROI_index++)
     {
         this->CheckReferenceVector(ROI_index);
+    }
+}
+
+TGraph *CCM::GetInterpolationGraph(const int ROI_index, const int subdivide, const bool valid_only)
+{
+    if (ROI_index >= V.number_of_ROIs)
+    {
+        throw std::runtime_error("ROI index out of bounds");
+    }
+
+    auto *interpolator = &fInterpolator.at(ROI_index);
+    TGraph *gr = new TGraph();
+
+    double x, y;
+    double step =
+        (interpolator->GetLastX() - interpolator->GetFirstX()) / ((double)interpolator->GetNPoints() * subdivide);
+    double x_start = interpolator->GetFirstX() - step * subdivide / 2.;
+    double x_end = interpolator->GetLastX() + step * subdivide / 2.;
+
+    for (x = x_start; x < x_end; x += step)
+    {
+        if (valid_only && !interpolator->IsValueValid(x))
+            continue;
+        y = interpolator->Eval(x);
+        gr->AddPoint(x, y);
+    }
+    return gr;
+}
+
+void CCM::SmoothShifts_Lowess(const int ROI_index, const double lowess_span)
+{
+
+    if (ROI_index >= V.number_of_ROIs)
+    {
+        throw std::runtime_error("ROI index out of bounds");
+    }
+
+    TGraph gr_data;
+
+    auto *interpolator = &fInterpolator.at(ROI_index);
+    interpolator->Reset();
+    for (int time_index = 0; time_index < V.time_bins; time_index++)
+    {
+        if (ResVec[ROI_index][time_index].isValid)
+        {
+            gr_data.AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
+                             ResVec[ROI_index][time_index].energy_shift);
+        }
+        else
+        {
+            // do not smooth if we have too little points. Just copy points to interpolator
+            if (gr_data.GetN() < fMINIMUM_SMOOTHING_POINTS)
+            {
+                for (int point = 0; point < gr_data.GetN(); point++)
+                {
+                    interpolator->AddPoint(gr_data.GetPointX(point), gr_data.GetPointY(point), true);
+                }
+            }
+            else
+            {
+                TGraphSmooth gs;
+                auto *gr_smoothed = gs.SmoothLowess(&gr_data, "", lowess_span);
+                for (int point = 0; point < gr_smoothed->GetN(); point++)
+                {
+                    interpolator->AddPoint(gr_smoothed->GetPointX(point), gr_smoothed->GetPointY(point), true);
+                }
+            }
+            interpolator->AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
+                                   ResVec[ROI_index][time_index].energy_shift, false);
+            gr_data = TGraph();
+        }
+    }
+
+    if (gr_data.GetN() < fMINIMUM_SMOOTHING_POINTS)
+    {
+        for (int point = 0; point < gr_data.GetN(); point++)
+        {
+            interpolator->AddPoint(gr_data.GetPointX(point), gr_data.GetPointY(point), true);
+        }
+    }
+    else
+    {
+        TGraphSmooth gs;
+        auto *gr_smoothed = gs.SmoothLowess(&gr_data, "", lowess_span);
+        for (int point = 0; point < gr_smoothed->GetN(); point++)
+        {
+            interpolator->AddPoint(gr_smoothed->GetPointX(point), gr_smoothed->GetPointY(point), true);
+        }
+    }
+}
+
+void CCM::SmoothShifts_KernelSmoother(const int ROI_index, const double bandwidth)
+{
+
+    if (ROI_index >= V.number_of_ROIs)
+    {
+        throw std::runtime_error("ROI index out of bounds");
+    }
+
+    TGraph gr_data;
+
+    auto *interpolator = &fInterpolator.at(ROI_index);
+    interpolator->Reset();
+    for (int time_index = 0; time_index < V.time_bins; time_index++)
+    {
+        if (ResVec[ROI_index][time_index].isValid)
+        {
+            gr_data.AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
+                             ResVec[ROI_index][time_index].energy_shift);
+        }
+        else
+        {
+            // do not smooth if we have too little points. Just copy points to interpolator
+            if (gr_data.GetN() < fMINIMUM_SMOOTHING_POINTS)
+            {
+                for (int point = 0; point < gr_data.GetN(); point++)
+                {
+                    interpolator->AddPoint(gr_data.GetPointX(point), gr_data.GetPointY(point), true);
+                }
+            }
+            else
+            {
+                TGraphSmooth gs;
+                auto *gr_smoothed = gs.SmoothKern(&gr_data, "normal", bandwidth);
+                for (int point = 0; point < gr_smoothed->GetN(); point++)
+                {
+                    interpolator->AddPoint(gr_smoothed->GetPointX(point), gr_smoothed->GetPointY(point), true);
+                }
+            }
+            interpolator->AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
+                                   ResVec[ROI_index][time_index].energy_shift, false);
+            gr_data = TGraph();
+        }
+    }
+
+    if (gr_data.GetN() < fMINIMUM_SMOOTHING_POINTS)
+    {
+        for (int point = 0; point < gr_data.GetN(); point++)
+        {
+            interpolator->AddPoint(gr_data.GetPointX(point), gr_data.GetPointY(point), true);
+        }
+    }
+    else
+    {
+        TGraphSmooth gs;
+        auto *gr_smoothed = gs.SmoothKern(&gr_data, "normal", bandwidth);
+        for (int point = 0; point < gr_smoothed->GetN(); point++)
+        {
+            interpolator->AddPoint(gr_smoothed->GetPointX(point), gr_smoothed->GetPointY(point), true);
+        }
     }
 }

@@ -2,11 +2,12 @@
 #include <tuple>
 #include <vector>
 
+#include "TGraphSmooth.h"
 #include "TMultiGraph.h"
 #include "TSpline.h"
 #include "TTree.h"
 
-// #include "CCMInterpolator.h"
+#include "CCMInterpolator.h"
 #include "variables.h"
 
 class CCM
@@ -27,12 +28,12 @@ class CCM
     CCM(const TH2D &matrix, const std::vector<Region_of_interest> &_ROIs);
 
     ~CCM();
-    /// @brief Calculates offsets/displacements
+    /// @brief Calculates energy offsets/shifts
     /// @param fNthreads
     void CalculateEnergyShifts(const unsigned int fNthreads = 8);
 
-    void AutoRules(int ROI, double sigma_width_acceptance = 3, double dp_width_acceptance = 3);
-    void AutoRules_allROIs(double sigma_width_acceptance = 3, double dp_width_acceptance = 3);
+    // void AutoRules(int ROI, double sigma_width_acceptance = 3, double dp_width_acceptance = 3);
+    // void AutoRules_allROIs(double sigma_width_acceptance = 3, double dp_width_acceptance = 3);
 
     /// @brief Provide primary function used for correction of the energy, ideally use is polynomial
     /// @param fcn
@@ -49,14 +50,11 @@ class CCM
 
     void SaveShiftTable(const std::string &table_filename = "shift_table.dat");
 
-    /// @brief From ROI displacements calculates the correction functions for each time slice. If valid_only is set to
-    /// true, only ROIs marked as valid are used. In case of valid_only=true AND a ROI is marked as invalid AND it is
-    /// possible to interpolate invalid ROI offset from neighbors using TSpline5 (only in case they exist and are
-    /// valid). In case a number of valid ROIs is lower then the number of primary function parameters, a first fallback
-    /// function with npar=nROIs is used.
-    /// @param valid_only
-    /// @param use_spline
-    void PerformFits(const bool valid_only = true, const bool use_spline = false);
+    /// @brief From ROI displacements calculates the correction functions for each time slice. By default only shifts
+    /// marked as valid  are used - this can be changed by with calling ConfigureShiftInterpolator() function. In case a
+    /// number of valid ROIs is lower then the number of primary function parameters, a first fallback function with
+    /// npar=nROIs is used.
+    void CalculateCorrectionFits(int time_subdivision = 1);
 
     /// @brief Fix a provided matrix based on the calculations. CCM object is owner of this matrix and manages it's
     /// deletion.
@@ -98,9 +96,12 @@ class CCM
         return V.number_of_ROIs;
     };
 
+    /// @brief To invalidate result for given ROI at given time index. All interpolators are reset.
+    /// @param ROI_no
+    /// @param time_index
     void SetInvalidResult(const int ROI_no, const int time_index);
 
-    /// @brief Use Gaussian result instead of the polynomial one to get the shift
+    /// @brief Use Gaussian result instead of the polynomial one to get the shift. All interpolators are reset.
     void UseGaussianResult();
 
     /// @brief Set reference projection for the shifts. This is useful if you want to use the same shifts for multiple
@@ -128,21 +129,46 @@ class CCM
     /// @return user is owner of the returned TGraph
     TGraph *GetShiftProfile(const int time_bin, const bool valid_only = true);
 
+    /// @brief produces a TGraph of energy shifts for given ROI but using values from interpolator, not calculated
+    /// shifts
+    TGraph *GetInterpolationGraph(const int ROI_index, const int subdivide = 10, const bool valid_only = true);
+
+    /// @brief Configure interpolators used to interpolate shifts across the time for given ROI.
+    /// @param ROI_index
+    /// @param type possible options LINEAR interpolation;  "POLYNOMIAL" interpolation, to be used for small number of
+    /// points since introduces large oscillations; "CSPLINE" cubic spline with natural boundary conditions;
+    /// "CSPLINE_PERIODIC" cubic spline with periodic boundary conditions; "AKIMA", Akima spline with natural boundary
+    /// conditions ( requires a minimum of 5 points); "AKIMA_PERIODIC", Akima spline with periodic boundaries ( requires
+    /// a minimum of 5 points);
+    void ConfigureShiftInterpolator(const int ROI_index, const std::string type = "AKIMA",
+                                    const bool valid_only = true);
+
+    void DisableInterpolation(const int ROI_index);
+    void EnableInterpolation(const int ROI_index);
+
+    void SmoothShifts_Lowess(const int ROI_index, const double lowess_span = 0.05);
+    void SmoothShifts_KernelSmoother(const int ROI_index, const double bandwidth = 2.);
+
   private:
     int fXbins;
     int fYbins;
 
+    const int fMINIMUM_SMOOTHING_POINTS = 3;
+    const std::string fDEFAULT_INTERPOLATOR = "AKIMA";
+
     TH2D *fFixedTEMAT{nullptr};
 
     std::vector<std::pair<TF1 *, std::string>> fCorrectionFunctions;
-    // std::vector<CCMInterpolator> fInterpolator;
+    std::map<int, CCMInterpolator> fInterpolator;
+    bool fInterpolatorReset{false};
 
     std::atomic<int> fThreadTask;
     int fNthreads;
     VarManager V;
     bool fFitDone{false};
     ResCont **ResVec;
-    FitCont *FitVec;
+    // FitCont *FitVec;
+    std::map<double, FitCont> fCorrectionFits;
 
     void CheckReferenceVector(int ROI_index);
     void CheckReferenceVectors();
@@ -161,5 +187,8 @@ class CCM
         return V.TEMAT->GetXaxis()->GetBinCenter(time_slice_index + 1);
     };
 
-    void BuildInterpolators(const bool valid_only = true);
+    void BuildInterpolator(const int ROI_index);
+    void BuildInterpolators();
+
+    const FitCont CalculateCorrectionFit(const double time);
 };
