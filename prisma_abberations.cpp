@@ -22,6 +22,7 @@
 #include "variables.h"
 
 using namespace std::chrono;
+using namespace TEC;
 
 #ifndef DATA_PATH
 #define DATA_PATH ""
@@ -63,8 +64,8 @@ int main(int argc, char **argv)
 
     // Set correction functions, you can have multiple functions as a fallback scenarios
 
-    // fix.SetCorrectionFunction(fcn1, "");
-    // fix.SetCorrectionFunction(analytical_fcn, "");
+    // fix.SeTECectionFunction(fcn1, "");
+    // fix.SeTECectionFunction(analytical_fcn, "");
     fix.SetCorrectionFunction(TF1("pol1", "pol1", 0, 1), "");
     // fix.SetFallbackCorrectionFunction(TF1("pol2", "pol2", 0, 1), "");
     // fix.SetFallbackCorrectionFunction(TF1("pol3", "pol3", 0, 1), "");

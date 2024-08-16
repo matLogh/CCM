@@ -134,7 +134,7 @@ void example_fix_tree()
 
     // fix.SelectFitFunction(1, 1);
     // START CCM
-    fix.SetCorrectionFunction(fcn, "");
+    fix.SeTECectionFunction(fcn, "");
     fix.CalculateEnergyShifts(8);
     fix.SaveShiftTable();
     fix.PerformFits();
@@ -183,7 +183,7 @@ int main(int argc, char **argv)
             CCM fix(*TEMAT, ROIs, reference_time_bgn, reference_time_end);
             TF1 fcn("gain_fcn", "[0]*x", 0, 4000);
 
-            fix.SetCorrectionFunction(fcn, "");
+            fix.SeTECectionFunction(fcn, "");
             fix.CalculateEnergyShifts(8);
 
             // fix.SaveShiftTable();

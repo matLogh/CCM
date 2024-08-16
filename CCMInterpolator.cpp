@@ -1,6 +1,6 @@
 #include "CCMInterpolator.h"
 
-CCMInterpolator::CCMInterpolator(std::string type, bool valid_only) : fValidOnly(valid_only)
+TEC::CCMInterpolator::CCMInterpolator(std::string type, bool valid_only) : fValidOnly(valid_only)
 {
     std::transform(type.begin(), type.end(), type.begin(), ::tolower);
     type.erase(std::remove(type.begin(), type.end(), ' '), type.end());
@@ -34,13 +34,13 @@ CCMInterpolator::CCMInterpolator(std::string type, bool valid_only) : fValidOnly
     }
 }
 
-CCMInterpolator::~CCMInterpolator()
+TEC::CCMInterpolator::~CCMInterpolator()
 {
     if (fInterpolator != nullptr)
         delete fInterpolator;
 }
 
-void CCMInterpolator::Reset()
+void TEC::CCMInterpolator::Reset()
 {
     if (fInterpolator != nullptr)
     {
@@ -53,7 +53,7 @@ void CCMInterpolator::Reset()
     fValid.clear();
 }
 
-const int CCMInterpolator::GetIndex(const double x) const
+const int TEC::CCMInterpolator::GetIndex(const double x) const
 {
     double diff = std::numeric_limits<double>::max();
     int index = -1;
@@ -70,7 +70,7 @@ const int CCMInterpolator::GetIndex(const double x) const
     return index;
 }
 
-const bool CCMInterpolator::InterpolationValid(const double x) const
+const bool TEC::CCMInterpolator::InterpolationValid(const double x) const
 {
     int index = this->GetIndex(x);
     double diff = x - fX[index];
@@ -108,7 +108,7 @@ const bool CCMInterpolator::InterpolationValid(const double x) const
     return true;
 }
 
-const bool CCMInterpolator::IsValueValid(const double x) const
+const bool TEC::CCMInterpolator::IsValueValid(const double x) const
 {
     int index = this->GetIndex(x);
     if (index == -1)
@@ -116,7 +116,7 @@ const bool CCMInterpolator::IsValueValid(const double x) const
     return fValid[index];
 }
 
-const double CCMInterpolator::Eval_noInterpolation(const double x)
+const double TEC::CCMInterpolator::Eval_noInterpolation(const double x)
 {
     int index = this->GetIndex(x);
     if (index == -1)
@@ -124,7 +124,7 @@ const double CCMInterpolator::Eval_noInterpolation(const double x)
     return fY[index];
 }
 
-const double CCMInterpolator::Eval(const double x)
+const double TEC::CCMInterpolator::Eval(const double x)
 {
     if (!fEnableInterpolation)
         return Eval_noInterpolation(x);
@@ -148,7 +148,7 @@ const double CCMInterpolator::Eval(const double x)
     return fInterpolator->Eval(x);
 }
 
-void CCMInterpolator::AddPoint(const double x, const double y, const bool valid)
+void TEC::CCMInterpolator::AddPoint(const double x, const double y, const bool valid)
 {
     if (fX.size() != 0 && x < fX.back())
     {

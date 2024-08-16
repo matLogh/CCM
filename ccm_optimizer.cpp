@@ -57,7 +57,7 @@ int main(int argc, char **argv)
     // t->Draw();
 
     CCM fix1(*TEMAT, ROIs, reference_time_bgn, reference_time_end);
-    fix1.SetCorrectionFunction(fcn, "");
+    fix1.SeTECectionFunction(fcn, "");
     fix1.CalculateEnergyShifts(1);
     fix1.PerformFits();
     auto *TEMAT_new = fix1.FixMatrix();
@@ -71,7 +71,7 @@ int main(int argc, char **argv)
     ROIs.emplace_back(Region_of_interest(*TEMAT, 7600., 7700., -20., 20., 7639.)); // ROI1 is the region of interest
 
     CCM fix2(*TEMAT, ROIs, reference_time_bgn, reference_time_end);
-    fix2.SetCorrectionFunction(fcn, "");
+    fix2.SeTECectionFunction(fcn, "");
     fix2.CalculateEnergyShifts(1);
     fix2.PerformFits();
     TEMAT_new = fix2.FixMatrix();

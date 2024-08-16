@@ -10,6 +10,9 @@
 #include "CCMInterpolator.h"
 #include "variables.h"
 
+namespace TEC
+{
+
 class CCM
 {
   public:
@@ -35,19 +38,15 @@ class CCM
     // void AutoRules(int ROI, double sigma_width_acceptance = 3, double dp_width_acceptance = 3);
     // void AutoRules_allROIs(double sigma_width_acceptance = 3, double dp_width_acceptance = 3);
 
-    /// @brief Provide primary function used for correction of the energy, ideally use is polynomial
-    /// @param fcn
+    /// @brief Provide primary function used for correction of the energy, ideally use is polynomial. For correction of
+    /// a given "time slice", a first function is used that has number of degrees of freedom less or equal to the number
+    /// of valid ROIs
+    /// @param fcn Function needs to be defined using TFormula!
     /// @param fit_options Fit options, see
     /// https://root.cern.ch/doc/master/classTGraph.html#aa978c8ee0162e661eae795f6f3a35589
     void SetCorrectionFunction(const TF1 &fcn, const std::string &fit_options);
 
-    /// @brief Provide secondary functions used for correction of the energy. Multiple functions can be provided by call
-    /// this function multiple times. Functions will be called
-    /// @param fcn should have LESS parameters than the primary function!
-    /// @param fit_options Fit options, see
-    /// https://root.cern.ch/doc/master/classTGraph.html#aa978c8ee0162e661eae795f6f3a35589
-    void SetFallbackCorrectionFunction(const TF1 &fcn, const std::string &fit_options);
-
+    /// @brief Save table containing shifts for each ROI for each time slice of time.
     void SaveShiftTable(const std::string &table_filename = "shift_table.dat");
 
     /// @brief From ROI displacements calculates the correction functions for each time slice. By default only shifts
@@ -67,7 +66,7 @@ class CCM
     /// @param input_mat
     /// @param valid_only
     /// @return
-    TH2D *FixMatrix(const TH2D *input_mat, const bool valid_only = true);
+    TH2D *FixMatrix(const TH2D *input_mat);
 
     /// @brief Fix the tree using the correction functions - these has to be calculated prior! Provided tree is
     /// cloned into a new TFile and branches are corrected. Normally, energy corrections are done for each time
@@ -104,6 +103,9 @@ class CCM
     /// @brief Use Gaussian result instead of the polynomial one to get the shift. All interpolators are reset.
     void UseGaussianResult();
 
+    /// @brief Use Gaussian result instead of the polynomial one to get the shift. All interpolators are reset.
+    void UsePolynomialResult();
+
     /// @brief Set reference projection for the shifts. This is useful if you want to use the same shifts for multiple
     /// matrices. Be aware that this will work only if the defined ROI's are " behaving" the same in between the
     /// matrices.
@@ -135,26 +137,59 @@ class CCM
 
     /// @brief Configure interpolators used to interpolate shifts across the time for given ROI.
     /// @param ROI_index
-    /// @param type possible options LINEAR interpolation;  "POLYNOMIAL" interpolation, to be used for small number of
-    /// points since introduces large oscillations; "CSPLINE" cubic spline with natural boundary conditions;
-    /// "CSPLINE_PERIODIC" cubic spline with periodic boundary conditions; "AKIMA", Akima spline with natural boundary
-    /// conditions ( requires a minimum of 5 points); "AKIMA_PERIODIC", Akima spline with periodic boundaries ( requires
-    /// a minimum of 5 points);
+    /// @param type possible options LINEAR interpolation;
+    /// 1) "POLYNOMIAL" interpolation, to be used for small number of points since introduces large
+    /// oscillations;
+    /// 2) "CSPLINE" cubic spline with natural boundary conditions;
+    /// 3) "CSPLINE_PERIODIC" cubic spline with periodic boundary conditions;
+    /// 4) "AKIMA", Akima spline with natural boundary conditions ( requires a minimum of 5 points);
+    /// 5) "AKIMA_PERIODIC", Akima spline with periodic boundaries ( requires a minimum of 5 points);
     void ConfigureShiftInterpolator(const int ROI_index, const std::string type = "AKIMA",
                                     const bool valid_only = true);
-
+    /// @brief Uses shift of the closest calculated (time) point, shift interpolation disabled
     void DisableInterpolation(const int ROI_index);
+    /// @brief Uses interpolation to calculate the shift value in between two calculated (time) points
     void EnableInterpolation(const int ROI_index);
 
-    void SmoothShifts_Lowess(const int ROI_index, const double lowess_span = 0.05);
+    /// @brief Smoothens the shift values, exact shift values are no longer used. For smoothing the LOWESS (Locally
+    /// Weighted Scatterplot Smoothing) algorithm is used.
+    /// @param ROI_index which ROI should be smoothed
+    /// @param lowess_span Meaning: The span parameter determines the proportion of the data used to fit each local
+    /// regression. It is a value between 0 and 1. Effect: A smaller span means that fewer data points are used for each
+    /// local regression, leading to a more flexible fit that can capture more detail but may also be more sensitive to
+    /// noise. A larger span results in a smoother fit that is less sensitive to noise but may miss finer details.
+    /// @param iter Meaning: The iter parameter specifies the number of robustifying iterations to perform. Effect: In
+    /// each iteration, the algorithm assigns weights to the data points based on their residuals from the previous
+    /// iteration. This helps to reduce the influence of outliers. More iterations can improve robustness but also
+    /// increase computation time.
+    /// @param delta Meaning: The delta parameter is used to speed up the computations by specifying a distance within
+    /// which the weights are considered constant. Effect: When delta is set to a positive value, the algorithm avoids
+    /// recalculating weights for points that are close to each other, thus reducing the number of computations. This
+    /// can significantly speed up the process for large datasets.
+    void SmoothShifts_Lowess(const int ROI_index, const double lowess_span = 0.05, const int iter = 3,
+                             const double delta = 0.0);
+
+    /// @brief Smoothens the shift values, exact shift values are no longer used. For smoothing the Kernel Smoother is
+    /// used
+    /// @param ROI_index which ROI should be smoothed
+    /// @param bandwidth Meaning: The bandwidth parameter, often denoted as h, specifies the width of the kernel
+    /// function. It determines the range of data points that influence the smoothed value at each point. Effect:
+    /// 1) A small bandwidth results in a narrow kernel, which means that only nearby points have a significant
+    /// influence on the smoothed value.This can capture more detail and variability in the data but may also lead to a
+    /// noisier estimate. 2) A large bandwidth results in a wider kernel, which means that more distant points also
+    /// influence the smoothed value. This produces a smoother estimate that is less sensitive to noise but may miss
+    /// finer details in the data.
     void SmoothShifts_KernelSmoother(const int ROI_index, const double bandwidth = 2.);
+
+  public:
+    const std::string EMPTY_FUNCTION_NAME{"EMPTY_FUNCTION"};
 
   private:
     int fXbins;
     int fYbins;
 
-    const int fMINIMUM_SMOOTHING_POINTS = 3;
-    const std::string fDEFAULT_INTERPOLATOR = "AKIMA";
+    const int fMINIMUM_SMOOTHING_POINTS{3};
+    const std::string fDEFAULT_INTERPOLATOR{"AKIMA"};
 
     TH2D *fFixedTEMAT{nullptr};
 
@@ -192,3 +227,5 @@ class CCM
 
     const FitCont CalculateCorrectionFit(const double time);
 };
+
+} // namespace TEC

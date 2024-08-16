@@ -17,6 +17,17 @@
 
 #include "variables.h"
 
+namespace TEC
+{
+
+#define SQRT_2_PI 2.5066282746310002
+
+inline Double_t gaussianWithBackGround(const Double_t *x, const Double_t *par)
+{
+    return par[0] / (par[2] * SQRT_2_PI) * exp(-(((x[0] - par[1]) * (x[0] - par[1])) / (2 * par[2] * par[2]))) +
+           par[3] + par[4] * x[0];
+}
+
 class CrossCorrel
 {
 
@@ -46,3 +57,5 @@ class CrossCorrel
     void FitControlGaussian(double &rchi2, double &sigma, double &mu);
     void GetShift(double &shift, double &dp, std::mutex &mtx_fit);
 };
+
+} // namespace TEC

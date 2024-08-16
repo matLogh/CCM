@@ -6,6 +6,9 @@
 #ifndef HEADER_H
 #define HEADER_H
 
+namespace TEC
+{
+
 extern std::atomic<int> thread_task;
 // extern std::atomic<bool> wait;
 
@@ -99,6 +102,7 @@ struct ResCont
     double bin_shift{0.};
     double energy_shift{0.};
     double dp{0.};
+    double poly_shift{0.};
     double gfit_sigma{0.};
     double gfit_mu{0.};
     double gfit_chi2{0.};
@@ -131,7 +135,9 @@ struct FitCont
 struct ShiftInterpolator
 {
     TGraph valid_points;
-    // TGraph invali
+    // TGraph invalid
 };
+
+} // namespace TEC
 
 #endif

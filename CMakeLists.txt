@@ -28,8 +28,8 @@ target_link_libraries(ccm ${ROOT_LIBRARIES} )
 # target_link_libraries(simple_example ${ROOT_LIBRARIES} )
 
 add_executable(agata test_agata.cpp)
-target_link_libraries(agata ${ROOT_LIBRARIES} ccm)
+target_link_libraries(agata theuerkauf_fitter ${ROOT_LIBRARIES} ccm)
 
 
-add_executable(prisma_abberations prisma_abberations.cpp)
-target_link_libraries(prisma_abberations ${ROOT_LIBRARIES} ccm)
+# add_executable(prisma_abberations prisma_abberations.cpp)
+# target_link_libraries(prisma_abberations ${ROOT_LIBRARIES} ccm)

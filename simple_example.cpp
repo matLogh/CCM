@@ -95,7 +95,7 @@ int main(int argc, char **argv)
 
     // create CCM object
     CCM fix(*TEMAT, ROIs, reference_time_bgn, reference_time_end);
-    fix.SetCorrectionFunction(fcn, "");
+    fix.SeTECectionFunction(fcn, "");
     fix.CalculateEnergyShifts(8);
     fix.PerformFits();
     auto *TEMAT_fixed = fix.FixMatrix();

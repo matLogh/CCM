@@ -10,16 +10,8 @@ list of throw exceptions:
 #include "Cross_correlation.h"
 #include "variables.h"
 
-#define SQRT_2_PI 2.5066282746310002
-
-Double_t gaussianWithBackGround(Double_t *x, Double_t *par)
-{
-    return par[0] / (par[2] * SQRT_2_PI) * exp(-(((x[0] - par[1]) * (x[0] - par[1])) / (2 * par[2] * par[2]))) +
-           par[3] + par[4] * x[0];
-}
-
-void CrossCorrel::Process(unsigned int thread_id, std::atomic<int> *thread_task, std::mutex &mtx_task,
-                          std::mutex &mtx_fit)
+void TEC::CrossCorrel::Process(unsigned int thread_id, std::atomic<int> *thread_task, std::mutex &mtx_task,
+                               std::mutex &mtx_fit)
 {
     while (true)
     {
@@ -41,7 +33,7 @@ void CrossCorrel::Process(unsigned int thread_id, std::atomic<int> *thread_task,
 value -999 passed to dp_vec indicates error and this
 must be disregarded later
 ****************************************************/
-void CrossCorrel::ROIAnalysis(const int ROI_index, const int time, std::mutex &mtx_fit)
+void TEC::CrossCorrel::ROIAnalysis(const int ROI_index, const int time, std::mutex &mtx_fit)
 {
 
     // create data vector with size that includes whole area around the floating vector
@@ -67,7 +59,7 @@ void CrossCorrel::ROIAnalysis(const int ROI_index, const int time, std::mutex &m
     this->SaveToContainer(time, ROI_index, mtx_fit);
 }
 
-std::vector<double> CrossCorrel::GetDataVec(const int ROI_index, const int time)
+std::vector<double> TEC::CrossCorrel::GetDataVec(const int ROI_index, const int time)
 {
     std::vector<double> data_vec(&V->TEMATarr[ROI_index][time][0],
                                  &V->TEMATarr[ROI_index][time][V->ROIs[ROI_index].displacement_range]);
@@ -79,7 +71,7 @@ retval:
    0 = OK
   -1 = input vector is full zeroes
 ****************************************************/
-int CrossCorrel::Normalize(std::vector<double> &v)
+int TEC::CrossCorrel::Normalize(std::vector<double> &v)
 {
     norm = 0;
     for (uint i = 0; i < v.size(); i++)
@@ -99,7 +91,7 @@ int CrossCorrel::Normalize(std::vector<double> &v)
     return 0;
 }
 
-double CrossCorrel::DotProduct(std::vector<double> &v1, std::vector<double> &v2)
+double TEC::CrossCorrel::DotProduct(std::vector<double> &v1, std::vector<double> &v2)
 {
     dp = 0;
     if (v1.size() != v2.size())
@@ -115,7 +107,7 @@ double CrossCorrel::DotProduct(std::vector<double> &v1, std::vector<double> &v2)
     return dp;
 }
 
-void CrossCorrel::SaveToContainer(const int time, const int ROI_index, std::mutex &mtx_fit)
+void TEC::CrossCorrel::SaveToContainer(const int time, const int ROI_index, std::mutex &mtx_fit)
 {
     // check if dp has valid values
     if (std::count(dp_vec.begin(), dp_vec.end(), -999) == dp_vec.size())
@@ -143,20 +135,19 @@ void CrossCorrel::SaveToContainer(const int time, const int ROI_index, std::mute
     ResVec[ROI_index][time].dp_vec.resize(dp_vec.size());
     memcpy(&ResVec[ROI_index][time].dp_vec[0], &dp_vec[0], dp_vec.size() * sizeof(double));
 
-    // get shift using pol2 fit of 7 points
-    this->GetShift(ResVec[ROI_index][time].bin_shift, ResVec[ROI_index][time].dp, mtx_fit);
-    // offset the shift value
-    ResVec[ROI_index][time].bin_shift += V->ROIs[ROI_index].base_shift_value;
-    ResVec[ROI_index][time].energy_shift = V->TEMAT->GetYaxis()->GetBinWidth(1) * ResVec[ROI_index][time].bin_shift;
-
+    // get shift using pol2 fit of 9 points
+    this->GetShift(ResVec[ROI_index][time].poly_shift, ResVec[ROI_index][time].dp, mtx_fit);
     // fit with gaussian to estimate property of the peak
     mtx_fit.lock();
     this->FitControlGaussian(ResVec[ROI_index][time].gfit_chi2, ResVec[ROI_index][time].gfit_sigma,
                              ResVec[ROI_index][time].gfit_mu);
     mtx_fit.unlock();
+    // set the default shift value - use gaussian as default
+    ResVec[ROI_index][time].bin_shift = ResVec[ROI_index][time].gfit_mu + V->ROIs[ROI_index].base_shift_value;
+    ResVec[ROI_index][time].energy_shift = V->TEMAT->GetYaxis()->GetBinWidth(1) * ResVec[ROI_index][time].bin_shift;
 }
 
-void CrossCorrel::GetShift(double &shift, double &dp, std::mutex &mtx_fit)
+void TEC::CrossCorrel::GetShift(double &shift, double &dp, std::mutex &mtx_fit)
 {
     const static int ndim = 9;
     static_assert(ndim % 2 == 1, "ndim must be odd");
@@ -185,9 +176,13 @@ void CrossCorrel::GetShift(double &shift, double &dp, std::mutex &mtx_fit)
     TGraph gr(ndim, arr_x, arr_y);
     {
         mtx_fit.lock();
-        TF1 fcn("shift_fitfcn", "pol4", arr_x[0], arr_x[ndim - 1]);
+        TF1 fcn("shift_fitfcn", "pol2", arr_x[0], arr_x[ndim - 1]);
         fcn.SetNpx(ndim * 1000);
-        gr.Fit(&fcn, "QNC");
+        // for (int i = 0; i < ndim; i++)
+        // std::cout << arr_x[i] << " " << arr_y[i] << " ";
+        // std::cout << std::endl;
+        gr.Fit(&fcn, "RQNC");
+        // std::cout << "linear fit end" << std::endl;
         // if (fcn.GetMaximum(arr_x[0], arr_x[ndim - 1]) < dp_vec[index])
         // {
         //     shift = static_cast<double>(index);
@@ -202,7 +197,7 @@ void CrossCorrel::GetShift(double &shift, double &dp, std::mutex &mtx_fit)
     }
 }
 
-void CrossCorrel::FitControlGaussian(double &rchi2, double &sigma, double &mu)
+void TEC::CrossCorrel::FitControlGaussian(double &rchi2, double &sigma, double &mu)
 {
     int nbins = static_cast<int>(dp_vec.size());
     TH1D h(Form("h_%d", current_task), Form("h_%d", current_task), nbins, -0.5, nbins - 0.5);
@@ -264,7 +259,7 @@ void CrossCorrel::FitControlGaussian(double &rchi2, double &sigma, double &mu)
     // param:   2 - sigma
     // param:   3 - bcg offset
     // param:   4 - bcg gain/linear
-    TF1 fcn("gauss_with_background", gaussianWithBackGround, low, high, 5);
+    TF1 fcn("gauss_with_background", TEC::gaussianWithBackGround, low, high, 5);
     fcn.SetParLimits(0, 0., 1.);
     fcn.SetParameter(0, 0.2);
     fcn.SetParLimits(1, low, high);

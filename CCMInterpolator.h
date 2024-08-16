@@ -9,6 +9,9 @@
 #include <stdexcept>
 #include <string>
 
+namespace TEC
+{
+
 class CCMInterpolator
 {
   public:
@@ -87,3 +90,5 @@ class CCMInterpolator
     const int GetIndex(const double x) const;
     const bool InterpolationValid(const double x) const;
 };
+
+} // namespace TEC
