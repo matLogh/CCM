@@ -58,6 +58,8 @@ int                gREGIME      = 0; // 0 - default grid search, 1 - empirical s
 std::string        gROOTFILE    = "";
 std::string        gMATRIX_NAME = "";
 
+const double MINUTES_TO_TIMESTAMPS = 6.0e9;
+
 std::string fourCharInt(int I)
 {
     std::stringstream ID;
@@ -104,6 +106,9 @@ void write_timeevo_agata_file(CCM              &corrections,
         return;
     }
 
+    std::cout << "Corrections for postPSAfilter are being written to: " << fname
+              << std::endl;
+
     auto         matrix        = corrections.GetInputMatrix();
     const double time_low_edge = matrix->GetXaxis()->GetBinLowEdge(1);
     const double time_up_edge =
@@ -120,9 +125,9 @@ void write_timeevo_agata_file(CCM              &corrections,
     TS_start = time_low_edge;
     TS_end   = TS_start + step;
 
-    std::cout << "TS_start: " << TS_start << " TS_end: " << TS_end << std::endl;
-    std::cout << "Time low edge: " << time_low_edge << std::endl;
-    std::cout << "Time up edge: " << time_up_edge << std::endl;
+    // std::cout << "TS_start: " << TS_start << " TS_end: " << TS_end << std::endl;
+    // std::cout << "Time low edge: " << time_low_edge << std::endl;
+    // std::cout << "Time up edge: " << time_up_edge << std::endl;
 
     while (TS_end < time_up_edge)
     {
@@ -131,13 +136,15 @@ void write_timeevo_agata_file(CCM              &corrections,
 
         if (fit.coef.size() != 1)
         {
-            file << std::setw(15) << (Long64_t)TS_start << std::setw(15)
-                 << (Long64_t)TS_end << std::setw(15) << 0. << "\n";
+            file << std::setw(20) << (Long64_t)TS_start * MINUTES_TO_TIMESTAMPS
+                 << std::setw(20) << (Long64_t)TS_end * MINUTES_TO_TIMESTAMPS
+                 << std::setw(15) << 0. << "\n";
         }
         else
         {
-            file << "  " << std::setw(15) << (Long64_t)TS_start << " " << std::setw(15)
-                 << (Long64_t)TS_end << " " << std::setw(15) << fit.coef.front() << "\n";
+            file << std::setw(20) << (Long64_t)TS_start * MINUTES_TO_TIMESTAMPS
+                 << std::setw(15) << (Long64_t)TS_end * MINUTES_TO_TIMESTAMPS
+                 << std::setw(20) << fit.coef.front() << "\n";
         }
 
         TS_start += step;
@@ -212,9 +219,12 @@ double fitfcn(double *x, double *par)
     return par[0] * x[0];
 }
 
-void run_ccm_super_settings(const std::shared_ptr<TH2> TEMAT,
-                            const ccm_settings        &settings)
+void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &settings)
 {
+    std::cout << "Running final corrections with super settings..." << std::endl;
+    settings.print_header(std::cout);
+    settings.print_values(std::cout);
+
     auto mr = TEMAT->Rebin2D(settings.temat_rebin_x, settings.temat_rebin_y,
                              Form("%%s_rebin_%ix_%iy", TEMAT->GetName(),
                                   settings.temat_rebin_x, settings.temat_rebin_y));
@@ -266,12 +276,16 @@ void run_ccm_super_settings(const std::shared_ptr<TH2> TEMAT,
         diagnostic_file.cd();
 
         auto TEMAT_fixed = ccm_fix.FixMatrix(TEMAT.get());
-        TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
-                                              gROIarr.at(2) + gROIarr.at(4));
+
         std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
         TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
         auto        shifts    = ccm_fix.GetROIShifts(0);
         auto profile = ccm_fix.GetInterpolationGraph(0, settings.temat_rebin_x, true);
+
+        TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
+                                              gROIarr.at(2) + gROIarr.at(4));
+        TEMAT->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
+                                        gROIarr.at(2) + gROIarr.at(4));
 
         TEMAT->Write();
         proj->Write();
@@ -622,6 +636,7 @@ int main(int argc, char **argv)
     gSUPER_SETTINGS.interpolator_smoothing = true;
     gSUPER_SETTINGS.smoother_type          = TEC::SmootherType::KERNEL;
     gSUPER_SETTINGS.smoother_par           = 20;
+    gSUPER_SETTINGS.cost                   = std::numeric_limits<double>::quiet_NaN();
 
     // this makes it slower!!!
     // ROOT::EnableImplicitMT();
