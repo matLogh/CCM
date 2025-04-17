@@ -1,0 +1,304 @@
+#include <Rtypes.h>
+#include <TChain.h>
+#include <TFile.h>
+#include <TH2F.h>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+using namespace std;
+
+string fourCharInt(int I)
+{
+    stringstream ID;
+    ID << setfill('0') << setw(4) << I;
+    return ID.str();
+}
+
+int get_crystal_id(const std::string &input)
+{
+    if (input.size() != 3 || !isdigit(input[0]) || !isdigit(input[1]) ||
+        !isalpha(input[2]))
+    {
+        throw std::invalid_argument(
+            "Input must be a 3-character string with 2 digits followed by a letter.");
+    }
+
+    int number =
+        (input[0] - '0') * 10 +
+        (input[1] - '0'); // Combine the first two characters into a single integer
+    char letter = std::toupper(input[2]); // Extract the third character as the letter
+
+    int retval = number * 3;
+    switch (letter)
+    {
+    case 'A': retval += 0; break;
+    case 'B': retval += 1; break;
+    case 'C': retval += 2; break;
+    default: throw std::invalid_argument("Invalid letter. Only A, B, or C are allowed.");
+    }
+
+    return retval;
+}
+
+const int verbose_level = 0;
+
+#include <chrono>
+
+int CoresTimeEvo(int                 runNr,
+                 std::vector<string> crystals,
+                 int                 seconds_per_bin,
+                 ULong64_t           maxEntries = 0)
+{
+
+    string inFilePattern =
+        "Data/run_" + fourCharInt(runNr) + "/Out_NC/Analysis" + "/Tree_";
+    string outDirName = "Out/run_" + fourCharInt(runNr);
+
+    std::vector<Int_t> crystalIds;
+    for (const auto &cry : crystals)
+    {
+        crystalIds.emplace_back(get_crystal_id(cry));
+        std::cout << "Crystal: " << cry << "\tID: " << crystalIds.back() << std::endl;
+    }
+
+    std::cout << "\n";
+    std::cout << "input file pattern: " << inFilePattern << std::endl;
+    std::cout << "output directory: " << outDirName << std::endl;
+
+    TChain *tree = new TChain(("TreeMaster"));
+    tree->Add((inFilePattern + "*.root").c_str());
+
+    ULong64_t TotalNumberOfEntries = tree->GetEntries();
+    if (maxEntries != 0) TotalNumberOfEntries = maxEntries;
+
+    ULong64_t minTS = 0;
+    ULong64_t maxTS = 0;
+
+    // Get the first and last TS
+    std::array<ULong64_t, 100> coreTS;
+    std::array<Float_t, 100>   coreE0;
+    std::array<int, 100>       coreId;
+    int                        nbcores;
+
+    tree->SetBranchAddress("coreTS", coreTS.data());
+    tree->SetBranchAddress("coreE0", coreE0.data());
+    tree->SetBranchAddress("coreId", coreId.data());
+    tree->SetBranchAddress("nbCores", &nbcores);
+
+    tree->SetBranchStatus("*", false);
+    tree->SetBranchStatus("coreTS", true);
+    tree->SetBranchStatus("coreE0", true);
+    tree->SetBranchStatus("coreId", true);
+    tree->SetBranchStatus("nbCores", true);
+
+    Long64_t index = 0;
+    while (minTS == 0 && index < TotalNumberOfEntries)
+    {
+        tree->GetEntry(index);
+        index++;
+        if (nbcores == 0) continue;
+        minTS = coreTS[0];
+    }
+    if (minTS == 0)
+    {
+        std::cout << "\nRun is empty\n" << std::endl;
+        return 1;
+    }
+
+    index = TotalNumberOfEntries - 1;
+    while (maxTS == 0 && index >= 0)
+    {
+        tree->GetEntry(index);
+        index--;
+        if (nbcores == 0) continue;
+        maxTS = coreTS[0];
+    }
+    if (maxTS == 0)
+    {
+        std::cout << "\nRun is empty\n" << std::endl;
+        return -1;
+    }
+
+    std::cout << "minTS: " << minTS << "\n";
+    std::cout << "maxTS: " << maxTS << std::endl;
+
+    // 1 bin = 5 mins
+    Long64_t minTime   = Long64_t(minTS * 1e-8) / 60. - 10;
+    Long64_t maxTime   = Long64_t(maxTS * 1e-8) / 60. + 10;
+    int      nTimeBins = (maxTime - minTime) * 60 / seconds_per_bin; // 30 seconds per bin
+
+    std::cout << "time binning: " << nTimeBins << "\trange: " << minTime << " " << maxTime
+              << std::endl;
+
+    std::vector<std::shared_ptr<TFile>> root_files;
+
+    std::vector<std::shared_ptr<TH2F>> timeEvoMatrices;
+    for (const auto &cry : crystals)
+    {
+        string outFileName =
+            outDirName + "/out_" + fourCharInt(runNr) + "_" + cry + ".root";
+        root_files.emplace_back(std::make_shared<TFile>(outFileName.c_str(), "recreate"));
+
+        timeEvoMatrices.emplace_back(
+            std::make_shared<TH2F>(("hE0_TS_" + cry).c_str(), ("hE0_TS_" + cry).c_str(),
+                                   nTimeBins, minTime, maxTime, 32000, 0, 8000));
+
+        timeEvoMatrices.back()->SetXTitle("Time [min]");
+        timeEvoMatrices.back()->SetYTitle("Energy [keV]");
+    }
+
+    for (ULong64_t entry = 0; entry < TotalNumberOfEntries; entry++)
+    {
+        // Start timing the loop
+        static auto start_time = std::chrono::steady_clock::now();
+
+        // Process the entry
+        tree->GetEntry(entry);
+        if (nbcores == 0) continue;
+
+        for (int n = 0; n < nbcores; n++)
+        {
+            auto it = std::find(crystalIds.begin(), crystalIds.end(), coreId[n]);
+            if (it != crystalIds.end())
+            {
+                int index = std::distance(crystalIds.begin(), it);
+                timeEvoMatrices[index]->Fill(coreTS[n] * 1e-8 / 60.0, coreE0[n]);
+            }
+        }
+
+        // Print progress every 20000 entries or if verbose_level is high
+        if (entry % 1000000 == 0)
+        {
+            auto   current_time    = std::chrono::steady_clock::now();
+            double elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+                                         current_time - start_time)
+                                         .count();
+            double progress = static_cast<double>(entry) / TotalNumberOfEntries;
+            double estimated_total_time = elapsed_seconds / progress;
+            double remaining_time       = estimated_total_time - elapsed_seconds;
+
+            std::cout << "\rProcessed " << entry << " / " << TotalNumberOfEntries << " ("
+                      << (progress * 100.0) << "%)"
+                      << " | Elapsed: " << elapsed_seconds << "s"
+                      << " | Remaining: " << remaining_time
+                      << "s                                         " << std::flush;
+        }
+    }
+    std::cout << std::endl; // Ensure the progress line is cleared after the loop
+    std::cout << std::endl;
+
+    for (int i = 0; i < root_files.size(); i++)
+    {
+        std::cout << "\nWriting matrix for crystal " << crystals[i] << std::endl;
+
+        auto file   = root_files[i];
+        auto hE0_TS = timeEvoMatrices[i];
+        file->cd();
+        hE0_TS->Write();
+    }
+
+    // system( ("mkdir " + outDirName).c_str() );
+
+    std::cout << "End of Program" << std::endl;
+
+    return 0;
+}
+
+void printHelp()
+{
+    std::cout << "Usage: program [OPTIONS]\n";
+    std::cout << "Options:\n";
+    std::cout << "  --help                    Display this help message\n";
+    std::cout << "  --run <integer>           Specify the run number (required)\n";
+    std::cout << "  --crys <3-letter strings> Specify crystals (can be multiple "
+                 "3-character strings)\n";
+    std::cout << "  --binning <integer>       Set number of seconds per bin (required)\n";
+    std::cout
+        << "  --maxentries <integer>    Set the maximum number of entries (optional)\n";
+    std::cout << "  --allcrys                 Run for all crystals of EXP_035\n";
+}
+
+void parseArguments(int                       argc,
+                    char                    **argv,
+                    int                      &binning,
+                    int                      &run,
+                    int                      &maxEntries,
+                    std::vector<std::string> &crystals)
+{
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        if (arg == "--help")
+        {
+            printHelp();
+            exit(0);
+        }
+        else if (arg == "--binning")
+        {
+            if (i + 1 < argc) { binning = std::stoi(argv[++i]); }
+            else { throw std::invalid_argument("Missing value for --binning"); }
+        }
+        else if (arg == "--run")
+        {
+            if (i + 1 < argc) { run = std::stoi(argv[++i]); }
+            else { throw std::invalid_argument("Missing value for --run"); }
+        }
+        else if (arg == "--maxentries")
+        {
+            if (i + 1 < argc) { maxEntries = std::stoi(argv[++i]); }
+            else { throw std::invalid_argument("Missing value for --maxentries"); }
+        }
+        else if (arg == "--crys")
+        {
+            while (i + 1 < argc && std::string(argv[i + 1]).size() == 3)
+            {
+                crystals.emplace_back(argv[++i]);
+            }
+        }
+        else if (arg == "--allcrys")
+        {
+            crystals = {"00A", "00B", "00C", "01A", "01C", "02A", "02B", "02C", "04A",
+                        "04B", "04C", "05B", "05C", "06A", "06B", "06C", "07A", "07B",
+                        "08A", "08B", "09A", "09B", "09C", "10A", "10B", "10C", "11A",
+                        "11B", "11C", "12A", "12B", "12C", "14A", "14B", "14C"};
+        }
+        else
+        {
+            printHelp();
+            throw std::invalid_argument("Unknown argument: " + arg);
+        }
+    }
+}
+
+int main(int argc, char **argv)
+{
+    int                      run;
+    int                      maxentries = 0;
+    std::vector<std::string> crystals;
+    int                      number_of_seconds_per_bin = 30;
+
+    parseArguments(argc, argv, number_of_seconds_per_bin, run, maxentries, crystals);
+
+    std::cout << "Parameters used are:" << std::endl;
+    std::cout << "Run number: " << run << std::endl;
+    std::cout << "Seconds per bin: " << number_of_seconds_per_bin << std::endl;
+    std::cout << "Max entries: " << maxentries << std::endl;
+
+    for (const auto &cry : crystals) { std::cout << "Crystal: " << cry << std::endl; }
+
+    if (crystals.empty())
+    {
+        std::cerr << "No crystals specified. Use --crys option." << std::endl;
+        return 1;
+    }
+    if (run == 0)
+    {
+        std::cerr << "No run number specified. Use --run option." << std::endl;
+        return 1;
+    }
+    return CoresTimeEvo(run, crystals, number_of_seconds_per_bin, maxentries);
+}
