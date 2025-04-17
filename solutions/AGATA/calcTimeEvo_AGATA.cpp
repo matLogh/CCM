@@ -502,7 +502,9 @@ void print_help()
                  "and exit.\n"
               << "  --rootfile [1]             Specify the root file "
                  "name\n"
-              << "  --matrix [1]               Specify the matrix name " << std::endl
+              << "  --matrix [1]               Specify the matrix name \n"
+              << "  --super_settings           Run corrections with hardcoded parameters"
+              << std::endl
               << std::endl;
 }
 
