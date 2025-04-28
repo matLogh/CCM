@@ -2,6 +2,7 @@
 #include <TChain.h>
 #include <TFile.h>
 #include <TH2F.h>
+#include <chrono>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -10,6 +11,8 @@
 #include <vector>
 
 using namespace std;
+
+std::vector<double> gENERGY_BINING{};
 
 string fourCharInt(int I)
 {
@@ -43,10 +46,6 @@ int get_crystal_id(const std::string &input)
 
     return retval;
 }
-
-const int verbose_level = 0;
-
-#include <chrono>
 
 int CoresTimeEvo(int                 runNr,
                  std::vector<string> crystals,
@@ -143,9 +142,9 @@ int CoresTimeEvo(int                 runNr,
             outDirName + "/out_" + fourCharInt(runNr) + "_" + cry + ".root";
         root_files.emplace_back(std::make_shared<TFile>(outFileName.c_str(), "recreate"));
 
-        timeEvoMatrices.emplace_back(
-            std::make_shared<TH2F>(("hE0_TS_" + cry).c_str(), ("hE0_TS_" + cry).c_str(),
-                                   nTimeBins, minTime, maxTime, 32000, 0, 8000));
+        timeEvoMatrices.emplace_back(std::make_shared<TH2F>(
+            ("hE0_TS_" + cry).c_str(), ("hE0_TS_" + cry).c_str(), nTimeBins, minTime,
+            maxTime, gENERGY_BINING.at(0), gENERGY_BINING.at(1), gENERGY_BINING.at(2)));
 
         timeEvoMatrices.back()->SetXTitle("Time [min]");
         timeEvoMatrices.back()->SetYTitle("Energy [keV]");
@@ -216,10 +215,15 @@ void printHelp()
     std::cout << "  --run <integer>           Specify the run number (required)\n";
     std::cout << "  --crys <3-letter strings> Specify crystals (can be multiple "
                  "3-character strings)\n";
-    std::cout << "  --binning <integer>       Set number of seconds per bin (required)\n";
     std::cout
         << "  --maxentries <integer>    Set the maximum number of entries (optional)\n";
     std::cout << "  --allcrys                 Run for all crystals of EXP_035\n";
+    std::cout
+        << "  --Tbinning <integer>      Set number of seconds per bin (default 30)\n";
+    std::cout << "  --Ebinning [1] [2] [3]    Set energy binning as: \n"
+              << "                                [1] number of bins (default 32 000)\n"
+              << "                                [2] min energy (default 0) \n"
+              << "                                [3] max energy(default 8 000)\n";
 }
 
 void parseArguments(int                       argc,
@@ -237,10 +241,20 @@ void parseArguments(int                       argc,
             printHelp();
             exit(0);
         }
-        else if (arg == "--binning")
+        else if (arg == "--Tbinning")
         {
             if (i + 1 < argc) { binning = std::stoi(argv[++i]); }
             else { throw std::invalid_argument("Missing value for --binning"); }
+        }
+        else if (arg == "--Ebinning")
+        {
+            if (i + 3 < argc)
+            {
+                gENERGY_BINING.emplace_back(std::stoi(argv[++i]));
+                gENERGY_BINING.emplace_back(std::stof(argv[++i]));
+                gENERGY_BINING.emplace_back(std::stof(argv[++i]));
+            }
+            else { throw std::invalid_argument("Missing values for --Ebinning"); }
         }
         else if (arg == "--run")
         {
@@ -256,15 +270,33 @@ void parseArguments(int                       argc,
         {
             while (i + 1 < argc && std::string(argv[i + 1]).size() == 3)
             {
-                crystals.emplace_back(argv[++i]);
+                if (std::find(crystals.begin(), crystals.end(), argv[i + 1]) ==
+                    crystals.end())
+                {
+                    crystals.emplace_back(argv[++i]);
+                }
+                else
+                {
+                    std::cerr << "Crystal " << argv[i + 1]
+                              << " already specified. Skipping." << std::endl;
+                }
             }
         }
         else if (arg == "--allcrys")
         {
-            crystals = {"00A", "00B", "00C", "01A", "01C", "02A", "02B", "02C", "04A",
-                        "04B", "04C", "05B", "05C", "06A", "06B", "06C", "07A", "07B",
-                        "08A", "08B", "09A", "09B", "09C", "10A", "10B", "10C", "11A",
-                        "11B", "11C", "12A", "12B", "12C", "14A", "14B", "14C"};
+            std::vector<std::string> _c = {
+                "00A", "00B", "00C", "01A", "01C", "02A", "02B", "02C", "04A",
+                "04B", "04C", "05B", "05C", "06A", "06B", "06C", "07A", "07B",
+                "08A", "08B", "09A", "09B", "09C", "10A", "10B", "10C", "11A",
+                "11B", "11C", "12A", "12B", "12C", "14A", "14B", "14C"};
+            for (const auto &cry : _c)
+            {
+                if (std::find(crystals.begin(), crystals.end(), argv[i + 1]) ==
+                    crystals.end())
+                {
+                    crystals.emplace_back(argv[++i]);
+                }
+            }
         }
         else
         {
@@ -272,6 +304,7 @@ void parseArguments(int                       argc,
             throw std::invalid_argument("Unknown argument: " + arg);
         }
     }
+    if (gENERGY_BINING.size() == 0) { gENERGY_BINING = {32000, 0, 8000}; }
 }
 
 int main(int argc, char **argv)

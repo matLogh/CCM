@@ -202,6 +202,13 @@ class CCM
     void SetReferenceVector(const unsigned int        ROI_index,
                             const std::vector<float> &own_reference_vector);
 
+    /// @brief Reference vector is calculated automatically from the matrix. You can
+    /// "export" it using this function and use it in other CCM objects.
+    std::vector<float> GetReferenceVector(const size_t ROI_index) const noexcept
+    {
+        return V.sample_vector[ROI_index];
+    }
+
     /// @brief Get all the shifts for selected ROI as a function of time. This is useful
     /// if you want to modify calculated shifts using smoothing functions or set own
     /// interpolation. If valid_only is set to true, only valid ROIs are shown

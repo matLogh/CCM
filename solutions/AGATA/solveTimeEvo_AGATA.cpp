@@ -1,5 +1,6 @@
 // #include <array>
 #include <chrono> //measure time
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -61,8 +62,11 @@ std::vector<float> gROIarr;
 std::vector<float> gREFERENCE_TIME;
 std::vector<float> gFIT_PEAK;
 bool               gUSE_SUPER_SETTINGS{false};
-std::string        gROOTFILE    = "";
-std::string        gMATRIX_NAME = "";
+std::string        gROOTFILE      = "";
+std::string        gMATRIX_NAME   = "";
+std::string        gCONF          = "";
+int                gREFERENCE_RUN = -1;
+std::vector<float> gREFERENCE_VECTOR;
 
 const double MINUTES_TO_TIMESTAMPS = 6.0e9;
 
@@ -99,9 +103,9 @@ int get_crystal_id(const std::string &input)
     return retval;
 }
 
-void write_timeevo_agata_file(CCM              &corrections,
-                              const std::string fname             = "TimeEvoCC.conf",
-                              int               seconds_per_point = 30)
+void write_timeevo_agata_file(std::shared_ptr<CCM> corrections,
+                              const std::string    fname             = "TimeEvoCC.conf",
+                              int                  seconds_per_point = 30)
 {
     assert(!fname.empty());
     assert(seconds_per_point > 0);
@@ -115,7 +119,7 @@ void write_timeevo_agata_file(CCM              &corrections,
     std::cout << "Corrections for postPSAfilter are being written to: " << fname
               << std::endl;
 
-    auto         matrix        = corrections.GetInputMatrix();
+    auto         matrix        = corrections->GetInputMatrix();
     const double time_low_edge = matrix->GetXaxis()->GetBinLowEdge(1);
     const double time_up_edge =
         matrix->GetXaxis()->GetBinUpEdge(matrix->GetXaxis()->GetNbins());
@@ -126,7 +130,9 @@ void write_timeevo_agata_file(CCM              &corrections,
     double time;
 
     // Write the header
-    file << "# TS_start        TS_end          gain \n";
+    file << "#" << std::setw(21) << "TS_start" << std::setw(22) << "TS_end"
+         << std::setw(22) << "gain"
+         << "\n";
 
     TS_start = time_low_edge;
     TS_end   = TS_start + step;
@@ -138,19 +144,21 @@ void write_timeevo_agata_file(CCM              &corrections,
     while (TS_end < time_up_edge)
     {
         time           = (double)TS_start + step / 2.0;
-        const auto fit = corrections.GetCorrectionFit(time);
+        const auto fit = corrections->GetCorrectionFit(time);
 
         if (fit.coef.size() != 1)
         {
-            file << std::setw(20) << (Long64_t)TS_start * MINUTES_TO_TIMESTAMPS
-                 << std::setw(20) << (Long64_t)TS_end * MINUTES_TO_TIMESTAMPS
-                 << std::setw(15) << 0. << "\n";
+            file << std::fixed << std::setprecision(0) << std::setw(22)
+                 << (Long64_t)(TS_start * MINUTES_TO_TIMESTAMPS) << std::setw(22)
+                 << (Long64_t)(TS_end * MINUTES_TO_TIMESTAMPS) << std::setw(15) << 0.0
+                 << "\n";
         }
         else
         {
-            file << std::setw(20) << (Long64_t)TS_start * MINUTES_TO_TIMESTAMPS
-                 << std::setw(15) << (Long64_t)TS_end * MINUTES_TO_TIMESTAMPS
-                 << std::setw(20) << fit.coef.front() << "\n";
+            file << std::fixed << std::setprecision(0) << std::setw(22)
+                 << (Long64_t)(TS_start * MINUTES_TO_TIMESTAMPS) << std::setw(22)
+                 << (Long64_t)(TS_end * MINUTES_TO_TIMESTAMPS) << std::fixed
+                 << std::setprecision(6) << std::setw(22) << fit.coef.front() << "\n";
         }
 
         TS_start += step;
@@ -241,38 +249,59 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
     std::vector<RegionOfInterest> ROIs;
     ROIs.emplace_back(RegionOfInterest(rTEMAT, gROIarr.at(1), gROIarr.at(2),
                                        gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
-    CCM ccm_fix(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
+
+    std::shared_ptr<CCM> ccm_fix = nullptr;
+
+    if (gREFERENCE_VECTOR.size() != 0)
+    {
+        // we need to "invent" the reference time or it may throw error if the time is
+        // outside of this matrix range
+        float stupid_ref_start = rTEMAT->GetXaxis()->GetBinLowEdge(1);
+        float stupid_ref_end =
+            rTEMAT->GetXaxis()->GetBinUpEdge(rTEMAT->GetXaxis()->GetNbins());
+        ccm_fix = std::make_shared<CCM>(rTEMAT, ROIs, stupid_ref_start, stupid_ref_end);
+        ccm_fix->SetReferenceVector(0, gREFERENCE_VECTOR);
+    }
+    else
+    {
+        ccm_fix = std::make_shared<CCM>(rTEMAT, ROIs, gREFERENCE_TIME.at(0),
+                                        gREFERENCE_TIME.at(1));
+    }
+
+    // CCM ccm_fix(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
 
     std::string addressStr = "gain_fcn_" + get_pointer_string(&ccm_fix);
     TF1         fcn("gain_fcn", "[0]*x", 0, 32000);
 
-    ccm_fix.SetCorrectionFunction(fcn, "");
-    ccm_fix.CalculateEnergyShifts(4);
+    ccm_fix->SetCorrectionFunction(fcn, "");
+    ccm_fix->CalculateEnergyShifts(4);
 
-    if (settings.use_gaussian) { ccm_fix.UseGaussianResult(); }
-    else { ccm_fix.UsePolynomialResult(); }
+    if (settings.use_gaussian) { ccm_fix->UseGaussianResult(); }
+    else { ccm_fix->UsePolynomialResult(); }
 
     if (settings.interpolator_type.empty() && !settings.interpolator_smoothing)
     {
-        ccm_fix.DisableInterpolation();
+        ccm_fix->DisableInterpolation();
     }
     if (!settings.interpolator_type.empty() && !settings.interpolator_smoothing)
     {
-        ccm_fix.EnableInterpolation();
-        ccm_fix.ConfigureShiftInterpolator(settings.interpolator_type,
-                                           settings.valid_only);
+        ccm_fix->EnableInterpolation();
+        ccm_fix->ConfigureShiftInterpolator(settings.interpolator_type,
+                                            settings.valid_only);
     }
 
     if (settings.interpolator_smoothing)
     {
-        ccm_fix.SmoothShifts(settings.smoother_type, settings.smoother_par);
+        ccm_fix->SmoothShifts(settings.smoother_type, settings.smoother_par);
     }
 
-    write_timeevo_agata_file(ccm_fix, "TimeEvoCC.conf", 30);
+    write_timeevo_agata_file(ccm_fix, gCONF, 30);
 
     {
+        std::ostringstream oss;
+        oss << std::setw(4) << std::setfill('0') << gRUN;
         std::string diagnostic_file_name =
-            "corrected_timeEvo_r" + std::to_string(gRUN) + "_" + gCRYSTAL + ".root";
+            "correctedTimeEvo_run_" + oss.str() + "_" + gCRYSTAL + ".root";
         TFile diagnostic_file(diagnostic_file_name.c_str(), "recreate");
         if (!diagnostic_file.IsOpen())
         {
@@ -282,12 +311,12 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
         diagnostic_file.cd();
 
         settings.print_values(std::cout);
-        auto TEMAT_fixed = ccm_fix.FixMatrix(TEMAT.get());
+        auto TEMAT_fixed = ccm_fix->FixMatrix(TEMAT.get());
 
         std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
         TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
-        auto        shifts    = ccm_fix.GetROIShifts(0);
-        auto profile = ccm_fix.GetInterpolationGraph(0, settings.temat_rebin_x, true);
+        auto        shifts    = ccm_fix->GetROIShifts(0);
+        auto profile = ccm_fix->GetInterpolationGraph(0, settings.temat_rebin_x, true);
 
         TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
                                               gROIarr.at(2) + gROIarr.at(4));
@@ -465,12 +494,15 @@ std::vector<ccm_settings> ccm_optimizer_global(
 // Function to print help message
 void print_help()
 {
+
     std::cout << "Usage: program [OPTIONS]\n\n"
-              << "Options:\n"
-              << "  --crystal [1]              Specify the crystal name "
-                 "(e.g. 00A).\n"
-              << "  --run [1]                  Specify the run number\n"
-              << "  --ROI [1] [2] [3] [4] [5]  Specify the Region of "
+              << "Options:\n";
+    std::cout << "  --help                     Display this help message "
+                 "and exit.\n";
+    std::cout << "  --crystal [1]              Specify the crystal name "
+                 "(e.g. 00A).\n";
+    std::cout << "  --run [1]                  Specify the run number\n";
+    std::cout << "  --ROI [1] [2] [3] [4] [5]  Specify the Region of "
                  "Interest (ROI) as:\n"
               << "                                [1] - desired energy of "
                  "the ROI\n"
@@ -481,10 +513,13 @@ void print_help()
                  "the LEFT (neg value!)\n"
               << "                                [5] - shift ROI by "
                  "maximum of [5] to "
-                 "the RIGHT\n"
-              << "  --ref_time [1] [2]         Specify the reference time "
-                 "interval \n"
-              << "  --fit_peak [1] [2] [3]     If running in minimization "
+                 "the RIGHT\n";
+
+    std::cout << "  --ROIsource [1] Define ROI for calibration sources. Currently "
+                 "recognized are: 60Co \n";
+    std::cout << "  --ref_time [1] [2]         Specify the reference time "
+                 "interval \n";
+    std::cout << "  --fit_peak [1] [2] [3]     If running in minimization "
                  "mode, specify "
                  "peak used \n"
               << "                                which FWFM is used to "
@@ -497,15 +532,18 @@ void print_help()
                  "find optimal "
                  "parameters \n"
               << "                             Note that this should be different peak "
-                 "than one contained in ROI, otherwise you are risking overfitting\n"
-              << "  --help                     Display this help message "
-                 "and exit.\n"
-              << "  --rootfile [1]             Specify the root file "
-                 "name\n"
-              << "  --matrix [1]               Specify the matrix name \n"
-              << "  --super_settings           Run corrections with hardcoded parameters"
-              << std::endl
-              << std::endl;
+                 "than one contained in ROI, otherwise you are risking overfitting\n";
+
+    std::cout << "  --rootfile [1]             Specify the root file "
+                 "name\n";
+    std::cout << "  --matrix [1]               Specify the matrix name \n";
+    std::cout << "  --conf [1]                 Specify file where to save the "
+                 "parameters. Can be deduced automatically. \n";
+    std::cout
+        << "  --super_settings           Run corrections with hardcoded parameters \n";
+    std::cout << "  --reference_other_run [1]  If you want to use the reference/sample "
+                 "vector from a previous run.\n";
+    std::cout << std::endl << std::endl;
 }
 
 // Helper function to parse space-separated floats
@@ -530,6 +568,102 @@ std::vector<float> parse_space_separated_floats(int &i, int argc, char **argv, i
     return result;
 }
 
+std::vector<float> parse_ROI_source(char *argv)
+{
+    std::string source = argv;
+    std::transform(source.begin(), source.end(), source.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (source == "60co" || "co60")
+    {
+        return {1332.501, 1300., 1370., -50, 50}; // Example values for 60Co
+    }
+    else if (source == "152eu" || "eu152")
+    {
+        throw std::runtime_error("152Eu source is not implemented yet");
+    }
+    else if (source == "226ra" || "ra226")
+    {
+        throw std::runtime_error("226Ra source is not implemented yet");
+    }
+    else if (source == "66ga" || "ga66")
+    {
+        throw std::runtime_error("66Ga source is not implemented yet");
+    }
+    else if (source == "56co" || "co56")
+    {
+        throw std::runtime_error("56Co source is not implemented yet");
+    }
+    else if (source == "na22" || "22na")
+    {
+        throw std::runtime_error("Na-22 source is not implemented yet");
+    }
+    else if (source == "cs137" || "137cs")
+    {
+        throw std::runtime_error("Na-22 source is not implemented yet");
+    }
+    else { throw std::runtime_error("Unknown source: " + source); }
+    return {-1.};
+}
+
+bool can_create_file(const std::string &path)
+{
+    try
+    {
+        // Extract the directory from the path
+        std::filesystem::path file_path(path);
+        std::filesystem::path dir_path = file_path.parent_path();
+
+        // Check if the directory exists
+        if (!dir_path.empty() && !std::filesystem::exists(dir_path))
+        {
+            // std::cerr << "Error: Directory does not exist: " << dir_path << std::endl;
+            return false;
+        }
+
+        // Try to create and write to the file
+        std::ofstream file(path);
+        if (!file.is_open())
+        {
+            std::cerr << "Error: Unable to create file at " << path << std::endl;
+            return false;
+        }
+
+        // Close the file and delete it (cleanup)
+        file.close();
+        std::filesystem::remove(path);
+
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Exception: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+void set_reference_vector()
+{
+    std::string reference_root_file = "Out/run_" + fourCharInt(gREFERENCE_RUN) + "/out_" +
+                                      fourCharInt(gREFERENCE_RUN) + "_" + gCRYSTAL +
+                                      ".root";
+
+    TFile *matfile = TFile::Open(reference_root_file.c_str(), "READ");
+    if (!matfile || matfile->IsZombie())
+    {
+        throw std::runtime_error(
+            "Error! could not open/find the old/REFERENCE ROOT file " +
+            reference_root_file + " file");
+    }
+    std::shared_ptr<TH2> TEMAT_original((TH2 *)matfile->Get(gMATRIX_NAME.c_str()));
+
+    std::vector<RegionOfInterest> ROIs;
+    ROIs.emplace_back(RegionOfInterest(TEMAT_original, gROIarr.at(1), gROIarr.at(2),
+                                       gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
+    CCM ccm_fix(TEMAT_original, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
+    gREFERENCE_VECTOR = ccm_fix.GetReferenceVector(0);
+}
+
 // Function to parse command-line arguments
 void parse_args(int argc, char **argv)
 {
@@ -537,7 +671,6 @@ void parse_args(int argc, char **argv)
     {
         // gCOST_PEAK
         std::string arg = argv[i];
-
         if (arg == "--help" || arg == "-h")
         {
             print_help();
@@ -547,17 +680,38 @@ void parse_args(int argc, char **argv)
         {
             gFIT_PEAK = parse_space_separated_floats(i, argc, argv, 3);
         }
-        else if (arg == "--crystal")
+        else if (arg == "--crystal" || arg == "--crys")
         {
             if (i + 1 < argc) { gCRYSTAL = argv[++i]; }
             else { throw std::runtime_error("Missing value for --crystal"); }
         }
-        else if (arg == "--rootfile")
+        else if (arg == "--reference_other_run")
+        {
+            if (i + 1 < argc)
+            {
+                try
+                {
+                    gREFERENCE_RUN = std::stoi(argv[++i]);
+                }
+                catch (const std::invalid_argument &)
+                {
+                    throw std::runtime_error(
+                        "Invalid integer value for --reference_other_run");
+                }
+            }
+            else { throw std::runtime_error("Missing value for --reference_other_run"); }
+        }
+        else if (arg == "--conf")
+        {
+            if (i + 1 < argc) { gCONF = argv[++i]; }
+            else { throw std::runtime_error("Missing value for --conf_path"); }
+        }
+        else if (arg == "--rootfile" || arg == "--rfile")
         {
             if (i + 1 < argc) { gROOTFILE = argv[++i]; }
             else { throw std::runtime_error("Missing value for --rootfile"); }
         }
-        else if (arg == "--matrix")
+        else if (arg == "--matrix" || arg == "--mat")
         {
             if (i + 1 < argc) { gMATRIX_NAME = argv[++i]; }
             else { throw std::runtime_error("Missing value for --matrix"); }
@@ -577,6 +731,12 @@ void parse_args(int argc, char **argv)
             }
             else { throw std::runtime_error("Missing value for --run"); }
         }
+        else if (arg == "--ROIsource")
+        {
+            if (i + 1 < argc) { gROIarr = parse_ROI_source(argv[++i]); }
+            else { throw std::runtime_error("Missing value for --ROIsource"); }
+        }
+
         else if (arg == "--ROI")
         {
             gROIarr =
@@ -619,7 +779,8 @@ void parse_args(int argc, char **argv)
     if (gROIarr.size() != 5)
     {
         print_help();
-        throw std::runtime_error("--ROI must have exactly 5 float values");
+        throw std::runtime_error("--ROI must have exactly 5 float values, but it has " +
+                                 std::to_string(gROIarr.size()));
     }
     if (gREFERENCE_TIME.size() != 2)
     {
@@ -645,6 +806,21 @@ void parse_args(int argc, char **argv)
                     gCRYSTAL + ".root";
     }
 
+    // setup conf file
+    {
+        if (gCONF.empty() || !can_create_file(gCONF))
+        {
+            std::string fname =
+                gCRYSTAL.empty() ? "TimeEvoCC.conf" : "TimeEvoCC_" + gCRYSTAL + ".conf";
+            gCONF = "Conf/" + gCRYSTAL + "/" + fname;
+            if (!can_create_file(gCONF)) { gCONF = fname; }
+        }
+        std::cout << "Output configuration file will be saved to: " << gCONF << std::endl;
+    }
+
+    // setup reference vector
+    if (gREFERENCE_RUN != -1) { set_reference_vector(); }
+
     // Print all parsed input parameters
     std::cout << "Parsed Input Parameters:" << std::endl;
     std::cout << "  Crystal: " << gCRYSTAL << std::endl;
@@ -654,6 +830,7 @@ void parse_args(int argc, char **argv)
     std::cout << "  ROI: ";
     for (const auto &val : gROIarr) { std::cout << val << " "; }
     std::cout << std::endl;
+    std::cout << "  Reference Run: " << gREFERENCE_RUN << std::endl;
     std::cout << "  Reference Time: ";
     for (const auto &val : gREFERENCE_TIME) { std::cout << val << " "; }
     std::cout << std::endl;
@@ -744,172 +921,3 @@ int main(int argc, char **argv)
 // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int test()
-{
-
-    std::string rfname  = "/home/mbalogh/data/ccm_agata/test/out_huge_00A_1010.root";
-    TFile      *matfile = TFile::Open(rfname.c_str(), "READ");
-    if (!matfile || matfile->IsZombie())
-    {
-        throw std::runtime_error("Error! could not open/find the " + rfname + " file");
-    }
-    TH2D *TEMAT_original = (TH2D *)matfile->Get("hE0_TS_00A");
-    if (!TEMAT_original)
-    {
-        throw std::runtime_error("Error! could not open/find the hE0_TS_00A matrix");
-    }
-
-    double reference_time[]{3103, 3119};
-
-    TF1 fcn("gain_fcn", "[0]*x", 0, 4000);
-    // // double reference_time_bgn = 3100;
-    // // double reference_time_end = 3200;
-    std::shared_ptr<TH2D> TEMAT(dynamic_cast<TH2D *>(
-        TEMAT_original->Clone(Form("%s_rebinned", TEMAT_original->GetName()))));
-
-    TEMAT->RebinX(2);
-    TEMAT->RebinY(2);
-
-    std::vector<RegionOfInterest> ROIs;
-    ROIs.emplace_back(RegionOfInterest(TEMAT, 2200., 2250., -30., 30., 2223.));
-
-    CCM ccm_fix(TEMAT, ROIs, reference_time[0], reference_time[1]);
-    ccm_fix.SetCorrectionFunction(fcn, "");
-    ccm_fix.CalculateEnergyShifts(8);
-    ccm_fix.UseGaussianResult();
-
-    // ccm_fix.CalculateCorrectionFits();
-    // for (int roi_index = 0; roi_index < ROIs.size(); roi_index++)
-    // {
-    //     // ccm_fix.ConfigureShiftInterpolator(roi_index,
-    //     // ROOT::Math::Interpolation::Type::kAKIMA,
-    //     //                                    true);
-    //     ccm_fix.EnableInterpolation(roi_index);
-    // }
-    TApplication app("App", 0, 0);
-    app.SetReturnFromRun(true);
-
-    ccm_fix.ConfigureShiftInterpolator(ROOT::Math::Interpolation::Type::kAKIMA, true);
-    ccm_fix.EnableInterpolation();
-
-    auto  TEMAT_new = ccm_fix.FixMatrix();
-    auto *proj      = TEMAT_new->ProjectionY();
-    proj->RebinX(8);
-    proj->SetName("proj1");
-    proj->SetLineColor(kRed);
-
-    auto TEMAT_large_new = ccm_fix.FixMatrix(TEMAT_original);
-
-    // new TCanvas();
-    // TEMAT_new->SetTitle("TEMAT_new_corrected but whatever");
-    // TEMAT_new->GetYaxis()->SetRangeUser(2200, 2240);
-    // TEMAT_new->Draw("COLZ");
-
-    // new TCanvas();
-    // TEMAT_large_new->RebinY(2);
-    // TEMAT_large_new->RebinX(2);
-    // TEMAT_large_new->GetYaxis()->SetRangeUser(2200, 2240);
-    // TEMAT_large_new->Draw("COLZ");
-
-    // new TCanvas();
-    // TEMAT_original->SetTitle("TEMAT_originak");
-    // TEMAT_original->RebinY(2);
-    // TEMAT_original->RebinX(2);
-    // TEMAT_original->GetYaxis()->SetRangeUser(2200, 2240);
-    // TEMAT_original->Draw("COLZ");
-    // app.Run();
-
-    // TEMAT_large_new->RebinX(5);
-    // TEMAT_large_new->RebinY(2);
-    auto proj_large = TEMAT_large_new->ProjectionY();
-    proj_large->RebinX(8);
-    proj_large->SetName("proj2");
-    proj_large->SetLineColor(kGreen);
-
-    new TCanvas();
-    proj->Draw("");
-    proj_large->Draw("SAME");
-    // TEMAT_original->ProjectionY()->Draw("SAME");
-    auto *_p = TEMAT->ProjectionY();
-    _p->RebinX(8);
-    _p->Draw("SAME");
-    // new TCanvas();
-    // projections.emplace_back(proj);
-
-    double fwfm_proj       = get_fwfm(proj, 7917, 7880, 7940);
-    double fwfm_proj_large = get_fwfm(proj_large, 7917, 7880, 7940);
-
-    std::cout << std::setprecision(8) << "proj " << fwfm_proj << " proj_large "
-              << fwfm_proj_large << std::endl;
-
-    auto gr_interpol = ccm_fix.GetInterpolationGraph(0);
-    gr_interpol->SetName("gr_interpol");
-    // gr_interpol->Draw("ALP");
-    gr_interpol->SetMarkerStyle(22);
-    gr_interpol->SetMarkerColor(2);
-    gr_interpol->SetDrawOption("L");
-    gr_interpol->SetLineColor(kBlue);
-    gr_interpol->SetLineWidth(2);
-    gr_interpol->SetFillStyle(0);
-
-    // ccm_fix.SmoothShifts_KernelSmoother(0, 20.);
-    ccm_fix.SmoothShifts(TEC::SmootherType::SUPER, 20.);
-    auto TEMAT_large_smooth = ccm_fix.FixMatrix(TEMAT_original);
-    TEMAT_large_smooth->RebinY(2);
-    auto proj_fixed_smooth = TEMAT_large_smooth->ProjectionY();
-    proj_fixed_smooth->SetName("proj_fixed_smooth");
-    proj_fixed_smooth->SetLineColor(kOrange);
-    proj_fixed_smooth->RebinX(8);
-    proj_fixed_smooth->Draw("SAME");
-
-    double fwfm_proj_smooth = get_fwfm(proj_fixed_smooth, 7917, 7880, 7940);
-    std::cout << "fwfm_proj_smooth " << fwfm_proj_smooth << std::endl;
-
-    ccm_fix.SmoothShifts(TEC::SmootherType::SUPER, 1.);
-
-    auto gr_smooth = ccm_fix.GetInterpolationGraph(0);
-
-    gr_smooth->SetMarkerStyle(23);
-    gr_smooth->SetLineColor(kRed);
-    gr_smooth->SetLineWidth(3);
-    gr_smooth->SetFillStyle(0);
-    gr_smooth->SetDrawOption("ACP");
-
-    // for (int i = 20; i < ccm_fix.GetNumberOfTimeIndices() / 2.;
-    // i++)
-    // {
-    //     ccm_fix.SetInvalidResult(0, i);
-    // }
-
-    // ccm_fix.SaveToRootFile("elia_roi1.root");
-
-    auto gr_points = ccm_fix.GetROIShifts(0);
-    gr_points->SetMarkerStyle(22);
-    gr_points->SetLineColor(kBlack);
-    gr_points->SetLineWidth(1);
-    gr_points->SetFillStyle(0);
-    gr_points->SetDrawOption("P");
-
-    TGraphSmooth gs("normal");
-    auto        *dio_cane = gs.SmoothKern(gr_points.get(), "normal", 10);
-    dio_cane->SetLineColor(kViolet);
-    dio_cane->SetLineWidth(2);
-    dio_cane->SetDrawOption("C");
-
-    auto mg = new TMultiGraph;
-
-    mg->Add(gr_points.get(), "P");
-    mg->Add(gr_smooth.get(), "C");
-    mg->Add(gr_interpol.get(), "L");
-    mg->Add(dio_cane, "C");
-    new TCanvas("Graph_profiles", "Graph_profiles", 800, 600);
-
-    mg->Draw("A");
-
-    write_timeevo_agata_file(ccm_fix, "TimeEvoCC.conf", 3600);
-
-    app.Run();
-
-    return 0;
-}
