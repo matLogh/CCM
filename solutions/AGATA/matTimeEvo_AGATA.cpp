@@ -47,6 +47,25 @@ int get_crystal_id(const std::string &input)
     return retval;
 }
 
+#include <filesystem>
+#include <iostream>
+
+void createDirectoryIfNotExists(const std::string &path)
+{
+    std::filesystem::path dirPath(path);
+
+    // Check if the directory exists
+    if (!std::filesystem::exists(dirPath))
+    {
+        // Create the directory
+        if (!std::filesystem::create_directories(dirPath))
+        {
+            std::cerr << "Failed to create directory: " << path << std::endl;
+        }
+    }
+    // else { std::cout << "Directory already exists: " << path << std::endl; }
+}
+
 int CoresTimeEvo(int                 runNr,
                  std::vector<string> crystals,
                  int                 seconds_per_bin,
@@ -54,7 +73,8 @@ int CoresTimeEvo(int                 runNr,
 {
 
     string inFilePattern = "run_" + fourCharInt(runNr) + "/Out/Analysis" + "/Tree_";
-    string outDirName    = "Out/run_" + fourCharInt(runNr);
+    string outDirName    = "run_" + fourCharInt(runNr) + "/Out/TimeEvo";
+    createDirectoryIfNotExists(outDirName);
 
     std::vector<Int_t> crystalIds;
     for (const auto &cry : crystals)
@@ -208,6 +228,8 @@ int CoresTimeEvo(int                 runNr,
 
 void printHelp()
 {
+    std::cout
+        << "To use the code, you should be in the directory where you ran replays\n\n";
     std::cout << "Usage: program [OPTIONS]\n";
     std::cout << "Options:\n";
     std::cout << "  --help                    Display this help message\n";
