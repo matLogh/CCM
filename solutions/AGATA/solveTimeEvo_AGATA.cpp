@@ -802,8 +802,11 @@ void parse_args(int argc, char **argv)
     if (gMATRIX_NAME.empty()) { gMATRIX_NAME = "hE0_TS_" + gCRYSTAL; }
     if (gROOTFILE.empty())
     {
-        gROOTFILE = "Out/run_" + fourCharInt(gRUN) + "/out_" + fourCharInt(gRUN) + "_" +
-                    gCRYSTAL + ".root";
+        gROOTFILE = "run_" + fourCharInt(gRUN) + "/Out/TimeEvo/out_" + fourCharInt(gRUN) +
+                    "_" + gCRYSTAL + ".root";
+        // gROOTFILE = "Out/run_" + fourCharInt(gRUN) + "/out_" + fourCharInt(gRUN) + "_"
+        // +
+        //             gCRYSTAL + ".root";
     }
 
     // setup conf file

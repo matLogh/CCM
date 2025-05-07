@@ -330,6 +330,13 @@ void parseArguments(int                       argc,
 
 int main(int argc, char **argv)
 {
+    if (argc < 2)
+    {
+        std::cerr << "No arguments provided." << std::endl << std::endl;
+        printHelp();
+        return 1;
+    }
+
     int                      run;
     int                      maxentries = 0;
     std::vector<std::string> crystals;
