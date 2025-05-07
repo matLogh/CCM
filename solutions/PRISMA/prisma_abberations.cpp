@@ -28,13 +28,15 @@ using namespace TEC;
 #define DATA_PATH ""
 #endif
 
+using namespace TEC;
+
 int main(int argc, char **argv)
 {
     TApplication app("app", 0, 0);
 
     TFile *f =
         TFile::Open((std::string(DATA_PATH) + "/example_data/aoq_vs_xfp.root").c_str());
-    TH2D *mat = (TH2D *)f->Get("Aoqnew_xfp_38");
+    std::shared_ptr<TH2D> mat((TH2D *)f->Get("Aoqnew_xfp_38"));
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
@@ -59,11 +61,11 @@ int main(int argc, char **argv)
     for (int i = 0; i < peaks.size(); i++)
     {
         ROIs.emplace_back(
-            RegionOfInterest(*mat, peaks[i] - 2, peaks[i] + 2, -1.5, 1.5, peaks[i]));
+            RegionOfInterest(mat, peaks[i] - 2, peaks[i] + 2, -1.5, 1.5, peaks[i]));
     }
 
     // create CCM object
-    CCM fix(*mat, ROIs, 727., 731.);
+    CCM fix(mat, ROIs, 727., 731.);
 
     // Set correction functions, you can have multiple functions as a fallback scenarios
 
@@ -94,7 +96,7 @@ int main(int argc, char **argv)
             const auto *result = fix.GetResultContainer(roi, t);
             if (result->gfit_sigma < 1 || result->gfit_sigma > 5 || result->dp < 0.6)
             {
-                fix.SetInvalidResult(roi, t);
+                fix.SetResultStatus(roi, t, false);
                 goodroi--;
             }
         }
@@ -104,7 +106,7 @@ int main(int argc, char **argv)
     fix.SaveFitTable();
 
     // get corrected matrix
-    auto *mat_fixed = fix.FixMatrix();
+    auto mat_fixed = fix.FixMatrix();
     fix.SaveToRootFile("prisma_abberations.root");
 
     // just to draw some shift profiles: for given "time" (x-axis slice) draw the

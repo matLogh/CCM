@@ -5,38 +5,42 @@ Any mistakes in the codes are purely mine, please report them to <matus.balogh@c
 Basic description of the algorithm is given [in the NIM A paper](https://www.sciencedirect.com/science/article/pii/S0168900221003521), but the code here provides a few additional features, such as spline-based corrections. Advantage of the CCM algorithm is that it can be applied for time-varying spectra (such as beta-decays, isomeric decays etc.) and the region used to evaluate energy shifts does not need to be a peak but rather an arbitrary spectral feature unique it shape in it's vicinity. 
 
 # Build
-Prerequisities: ROOT (see https://root.cern.ch/building-root), tested on ROOT6.26/15
+Prerequisities: ROOT (see https://root.cern.ch/building-root), tested with ROOT6.26/15
 
 ```bash
 git clone https://github.com/matLogh/CCM.git
+cd CCM
 mkdir build
 cd build
 cmake ../
-make
+make -j4
 ```
 
 Executables ```simple_example``` and ```optimizer``` will be created that are using the data set from the ```data/``` directory. Source code ```simple_example.cpp``` showcases the most basic usage of the code. The ```optimizer.cpp``` demonstrate an automated brute-force approach to find the ideal parameters of the CCM in order to obtain the best result - in this case defined as a lowest FWHM for given peak. 
 
 
 # How to use the code
-## TL;DR - basics
+## Basics
 Algorithm requires following inputs:
 - time (X axis) vs energy (Y axis) matrix (TEMAT),
 - reference time window,
 - at least one Region Of Interest (ROI),
 - at least one energy-correcting function.
 
-**TEMAT** is an input matrix with the data. It is required that the matrix has a time on X axis and energy on Y. Both energy- and time-binning are important parameters that significantly affects the resulting correction. It is advised to tune these for the best results.
+In very **simplified terms**, CCM performs energy calibration for each energy spectrum produced by single time-bin projection of the input matrix. It is done by finding *an energy shift* between *"a good/reference energy spectrum"* (defined by the reference time window) and the projected energy spectrum, but only within the *"regions of interest"* (what would be the fit region in standard energy calibration procedure). Once the energy shift is calculated, a correction function is used to recalibrate the projected energy spectrum.
 
-**Reference time window** denotes a single stretch of time, in which the energy is stable/do not vary in time. It is advised to make reference time window as wide as possible.
+**TEMAT** is an input matrix with the data. It is expected that the matrix has a time on X axis and energy on Y. Both energy- and time-binning are important parameters that significantly affects the resulting correction. It is advised to tune these for the best results; more binning == finer time corrections but also lower statistics for the code to work with.
 
-Similar to energy calibration, **ROI** defines the energy region which is used to obtain energy shift in order to convert "old" energy to "aligned" energy using the **correction function**. It should encapsulate a peak or another spectral feature that is used to evaluate offsets. Energies are aligned to the ones defined by the reference time window. Multiple ROIs can be defined. Each ROI is defined by
-- energy window that completely encapsules a peak or spectral feature you are using for alignment. Window doesn't need to be symmetric, I used usually 50-100 bin wide window.
-- energy displacement window that should be at least slightly larger then maximum energy offset of the peak/spectral feature.
-- pointer to TEMAT to perform bin conversions
+**Reference time window** denotes a single stretch of time, in which the energy is stable/does not vary in time. It is advised to make reference time window as wide as possible to increase statistics. Reference time window is used to construct *reference vectors(s)* for each *ROI*.  
+
+Similar to energy calibration, **ROI** defines an energy region which is used to obtain energy shift in order to convert "old" energy to "aligned" energy using the **correction function**. It should encapsulate a peak or another spectral feature () that is used to evaluate offsets. Energies are aligned to the ones defined by the reference time window. Multiple ROIs can be defined. Each ROI is defined by:
+- shared_ptr to TEMAT to perform bin conversions
+- *energy window* that completely encapsules a peak or spectral feature you are using for alignment in the reference energy spectrum. Window doesn't need to be symmetric around the peak/feature, I use usually 50-100 bin wide window.
+- *energy displacement window* that should be at least slightly larger then maximum energy offset of the peak/spectral feature.
+- *desired energy* - what energy the peak/feature should have
 
 
-**Correction function** is an equivalent to the function used for energy calibration. Usually, simple polynomial ```0 + [1]*x``` is sufficient for HPGe detectors. It must given as TF1 object that **MUST be build using TFormula constructor**, e.g.:
+**Correction function** is an equivalent to the function used for energy calibration. Usually, simple gain correction ```[1]*x``` is sufficient for HPGe detectors. It must given as TF1 object that **MUST be build using TFormula constructor**, e.g.:
 
 ```cpp
 TF1 fcn("gain_fcn", "[0]*x", 0, 4000); // range can be arbitrary, it is set by CCM
@@ -44,28 +48,46 @@ TF1 f("my_fcn","[0] + sqrt(x)*[1] + x*[2]", 0 ,1);
 ```
 Multiple correction function can be specified, correction is performed with the first function that has number of degrees of freedom equal or less then number valid ROIs. 
 
-Once these objects are set, it is necessary to call ```CalculateEnergyShifts(int nthreads)``` function that determine the energy offsets of ROIs for each time-bin of the TEMAT. Correction, or pseudo-energy-calibration functions for each time-slice is calculated by calling ```PerformFits( bool valid_only, bool use_spline)``` After that is done, it is up to you to decide what output do you prefer, see next sections.
+Once these objects are set, it is necessary to call ```CalculateEnergyShifts(int nthreads = 8)``` function that determine the energy offsets of ROIs for each time-bin of the TEMAT. Correction, or pseudo-energy-calibration functions for each time-slice is calculated by calling ```CalculateCorrectionFits( int time_subdivision = 1)``` After that is done, it is up to you to decide what output do you prefer, see next sections.
+
+Following is a simple snippet of the code
+```cpp
+TFile tfile("some_data_file.root","READ");
+std::shared_ptr<TH2F> TEMAT((TH2F*)tfile.Get("60Co_matrix"));
+std::vector<RegionOfInterest> ROIs;
+ROIs.emplace_back(TEMAT, 1300, 1360, -30, 30, 1332.5);
+CCM fix(mat, ROIs, 727., 731.);
+fix.CalculateEnergyShifts();
+fix.CalculateCorrectionFits();
+
+```
+
 ***
+
+
 ## Results
-To evaluate effectiveness of the CCM, the fastest way is [matrix correction](#matrix-corrections). It is useful especially for evaluation of the best parameters for CCM. 
+Simplest way to evaluate CCM's effectiveness is by correcting the input TEMAT, which is done by calling 
+```cpp
+auto fixed_matrix = fix.FixMatrix();
+```
+Moreover, it is possible to request correction for the matrix with much finer binning by supplying it to the overloaded function();
+
+```cpp
+std::shared_ptr<TH2F> TEMAT_large((TH2F*)tfile.Get("60Co_matrix_large"));
+auto fixed_large_matrix = fix.FixMatrix(TEMAT_large);
+```
+You can find more on the interpolators in [advanced options](#advanced-options).
+
 
 CCM can also apply corrections for an arbitrary new [TTree](#tree-corrections).
 
 Further, [text-based tables](#table-corrections) can be produced containing either just the shifts of each ROI, or a complete "recipe" containing list of correction functions and their parameters for each time period. 
 
-Lastly, more complete set of results can be also saved into [CCM ROOT file](#root-file).
-### Matrix corrections
 
-The most basic output of the  ```CCM fix(...)``` object can be produced by correcting the input matrix
-```cpp
-TH2D *fixed_matrix = fix.FixMatrix();
-```
 
-Another way to fix the matrix is to utilize [spline interpolation](#spline-interpolation). To use it, one needs to create an identical matrix (data-wise) to original TEMAT, but with finer binning and pass it to the 
-```cpp
-TH2D *FixMatrix(const TH2D *input_mat, const bool valid_only = true)
-``` 
-function. [Spline interpolation](#spline-interpolation) is used to evaluate energy offsets for additional time bins. 
+
+
+
 
 ### Tree corrections
 Event by event corrections can be applied by user-supplied TTree. CCM creates a clone of the tree (including unused branches) and apply correction on the content of the energy branch. TTree is expected to contain a single-value branches for time(stamp) and energy. For enhanced corrections a [spline interpolation](#spline-interpolation) can be used by specifying ```time_subdivision``` parameter, which essentially divides the range of each time-bin of the TEMAT into given number of sub-ranges with unique correction function.  
@@ -131,6 +153,16 @@ The ROI trees grants access to full information on the cross-correlation method 
 
 
 ***
+
+
+## Advanced options
+#### Multiple runs/multiple detectors
+In case you want to find corrections for the same detector in multiple runs, e.i. you need to re-use *reference vector* from one matrix to fix another one(s), you can define/recycle *reference vector*. Normally it is obtained from the *reference time window* for each ROI. Easiest way to accomplish this is to create CCM object for matrix #1, call ```GetReferenceVector(size_t ROI_index)``` and feed it to the CMM object of matrix #2 by calling ```SetReferenceVector(uint ROI_index, std::vector<float> &own_reference_vector)```.
+
+
+***
+
+
 # More detailed description
 ## Calculating displacement
 

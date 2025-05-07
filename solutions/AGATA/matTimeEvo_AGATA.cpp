@@ -53,9 +53,8 @@ int CoresTimeEvo(int                 runNr,
                  ULong64_t           maxEntries = 0)
 {
 
-    string inFilePattern =
-        "Data/run_" + fourCharInt(runNr) + "/Out_NC/Analysis" + "/Tree_";
-    string outDirName = "Out/run_" + fourCharInt(runNr);
+    string inFilePattern = "run_" + fourCharInt(runNr) + "/Out/Analysis" + "/Tree_";
+    string outDirName    = "Out/run_" + fourCharInt(runNr);
 
     std::vector<Int_t> crystalIds;
     for (const auto &cry : crystals)
