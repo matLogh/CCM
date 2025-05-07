@@ -20,6 +20,19 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_definitions("-DDATA_PATH=\"${PROJECT_SOURCE_DIR}\"")
 
+# Update git submodules
+execute_process(
+    COMMAND git submodule update --init --recursive
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    RESULT_VARIABLE result
+)
+
+if(NOT result EQUAL 0)
+    message(FATAL_ERROR "Failed to update git submodules. Please check your repository.")
+endif()
+
+
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/modules/fitter/)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/modules/fitter)
 
