@@ -27,7 +27,7 @@ Algorithm requires following inputs:
 - at least one Region Of Interest (ROI),
 - at least one energy-correcting function.
 
-In very **simplified terms**, CCM performs energy calibration for each energy spectrum produced by single time-bin projection of the input matrix. It is done by finding *an energy shift* between *"a good/reference energy spectrum"* (defined by the reference time window) and the projected energy spectrum, but only within the *"regions of interest"* (what would be the fit region in standard energy calibration procedure). Once the energy shift is calculated, a correction function is used to recalibrate the projected energy spectrum.
+In very **simplified terms**, CCM performs energy calibration for each energy spectrum produced by single time-bin projection of the input matrix. It is done by finding *an energy shift* between a *"good/nominal/reference energy spectrum"* (defined by the reference time window) and the projected energy spectrum, but only within the *"regions of interest"* (what would be the fit region in standard energy calibration procedure). Once the energy shift is calculated, a correction function is used to recalibrate the projected energy spectrum.
 
 **TEMAT** is an input matrix with the data. It is expected that the matrix has a time on X axis and energy on Y. Both energy- and time-binning are important parameters that significantly affects the resulting correction. It is advised to tune these for the best results; more binning == finer time corrections but also lower statistics for the code to work with.
 
@@ -65,7 +65,9 @@ fix.CalculateCorrectionFits();
 ***
 
 
-## Results
+# Results
+
+### FixMatrix
 Simplest way to evaluate CCM's effectiveness is by correcting the input TEMAT, which is done by calling 
 ```cpp
 auto fixed_matrix = fix.FixMatrix();
@@ -76,20 +78,11 @@ Moreover, it is possible to request correction for the matrix with much finer bi
 std::shared_ptr<TH2F> TEMAT_large((TH2F*)tfile.Get("60Co_matrix_large"));
 auto fixed_large_matrix = fix.FixMatrix(TEMAT_large);
 ```
-You can find more on the interpolators in [advanced options](#advanced-options).
-
-
-CCM can also apply corrections for an arbitrary new [TTree](#tree-corrections).
-
-Further, [text-based tables](#table-corrections) can be produced containing either just the shifts of each ROI, or a complete "recipe" containing list of correction functions and their parameters for each time period. 
-
-
-
-
-
+You can find more on the interpolators in [in this section](#interpolators).
 
 
 ### Tree corrections
+**Warning this functionality is currently not available because it was not tested after recent updates. Let me know if you need it.**
 Event by event corrections can be applied by user-supplied TTree. CCM creates a clone of the tree (including unused branches) and apply correction on the content of the energy branch. TTree is expected to contain a single-value branches for time(stamp) and energy. For enhanced corrections a [spline interpolation](#spline-interpolation) can be used by specifying ```time_subdivision``` parameter, which essentially divides the range of each time-bin of the TEMAT into given number of sub-ranges with unique correction function.  
 
 ```cpp
@@ -97,14 +90,14 @@ void FixTree(const std::string &tfilename, const std::string &treename, const st
                          const std::string &ts_branchname, const bool valid_only = true,
                          const int time_subdivision = 1);
 ```
-### Table corrections
+### Tables
 #### Shift table
 
-Shift table is created by calling 
+Shift table contains energy shift between reference/nominal position of ROI and the sample ROI, produced by energy projection of given time bin of TEMAT. It can be created by calling 
 ```cpp
 void SaveShiftTable(const std::string &table_filename);
 ```
-in following format (written also in the table)
+Table is written in following format (written also in the table header)
 ```
 # number of ROIs (regions of interest) in the matrix
 # desired_energy_ROI0 desired_energy_ROI1 ...
@@ -113,7 +106,7 @@ in following format (written also in the table)
 ```
 
 #### Fit table
-Fit table is created by calling
+Fit table contain correction function (in string format suitable for TFormula) and its parameters for given time. It is created by calling
 ```cpp
 void SaveFitTable(const std::string &data_filename, const std::string &detector_name)
 ```
@@ -155,31 +148,44 @@ The ROI trees grants access to full information on the cross-correlation method 
 ***
 
 
-## Advanced options
+# Detailed description and advanced options
 #### Multiple runs/multiple detectors
-In case you want to find corrections for the same detector in multiple runs, e.i. you need to re-use *reference vector* from one matrix to fix another one(s), you can define/recycle *reference vector*. Normally it is obtained from the *reference time window* for each ROI. Easiest way to accomplish this is to create CCM object for matrix #1, call ```GetReferenceVector(size_t ROI_index)``` and feed it to the CMM object of matrix #2 by calling ```SetReferenceVector(uint ROI_index, std::vector<float> &own_reference_vector)```.
+In case you want to find corrections for the same detector in multiple runs, e.i. you need to re-use *reference vector* from one matrix to fix another one(s), you can manually define or recycle the *reference vector*. Normally it is obtained from the *reference time window* for each ROI. Easiest way to accomplish this is with recycling is to create CCM object for matrix #1, call 
+```cpp
+CCM fix1(...);
+...
+size_t ROIno = 0;
+auto ref_vec = fix1.GetReferenceVector(ROIno)
+``` 
+and feed it to the CMM object of matrix #2 by calling 
+```cpp
 
+CCM fix2(...);
+...
+fix2.SetReferenceVector(ROIno, ref_vec)
+```
 
-***
-
-
-# More detailed description
 ## Calculating displacement
 
 As mentioned in the NIM paper, the maximum dot product for a set of displacement of a given ROI-vector and reference-vector yields only integer value, which provides only limited precision. A floating point value can be obtained by performing a fit of the dot product distribution. However, precise fit would require apriori knowledge of the analytical function resulting from convolution of the "spectral features" (defined in the ROI bounds) with itself, but this is not possible to achieve in general. Therefore, a simple *pol2* fit of 9 points around the maximum dot product and floating point value of the shift is calculated from the maximum of the fitted function. 
 
-Although it is not possible to know analytical function describing the convolution, it is reasonable to expect that resulting dot product distribution is peak-shaped. Therefore, a Gaussian fit of limited number of values around the maximum is performed in addition to the polynomial but it is not used as a default value of the shift. This can be changed by calling 
+Although it is not possible to know analytical function describing the convolution, it is reasonable to expect that resulting dot product distribution is peak-shaped. Therefore, a Gaussian fit of limited number of values around the maximum is performed in addition to the polynomial. You can switch between the two results by calling
 ```cpp
 void UseGaussianResult();
 ```
+or
+```cpp
+void UsePolynomialResult();
+```
+
 
 
 ## Validity of the calculated shift
-By default all shifts are marked as valid, unless the energy projection of given time-bin is 0; such bins are expected as one wants to make sure that all the data are inside the matrix. 
+By default all shifts are marked as valid, unless the energy projection of given time-bin is 0: such bins are expected as one usually produces matrices with some empty time padding to make sure that TEMAT contain all the data.
 
-User can however mark some shifts as invalid manually by calling 
+User can however mark some shifts as valid/invalid manually by calling 
 ```cpp
-void SetInvalidResult(const int ROI_no, const int time_index);
+void SetResultStatus(const int ROI_no, const int time_index,const bool valid);
 ```
 where the input is the ROI number (indexing from 0) and the index of time-projected spectrum (index from 0, basically bin number minus 1). The decision can be made based on the data stored in the ```ResCont``` structure obtained by calling 
 ```cpp
@@ -192,15 +198,21 @@ Function returns ```nullptr``` in case of wrong inputs. This container holds
 - *dot_product*; value of maximum dot product, 
 - *dp_vector*; n-dimensional vector of dot products calculated between reference vector and test vector (n-dimension = number of shifts of test vector)
 
-Moreover, it contain also details on Gaussian fit of the dp_vector points around the dot product maximum. As mentioned in the previous section, it is not possible to know analytical function describing the convolution, however it is reasonable to expect that resulting dot product distribution is peak-shaped. Therefore, a Gaussian fit of limited number of values around the maximum is reasonable. Idea behind this is that values like chi2 and sigma should be within a reasonable range - you can see this by quickly plotting them (individually for each ROI) from the [ROOT file](#root-file). The list of variables available in the *ResCont* are 
+Moreover, it contain also details on Gaussian fit of the dp_vector points around the dot product maximum:
+
+As mentioned above, it is not possible to know analytical function describing the convolution. However, it is reasonable to expect that resulting dot product distribution is peak-shaped. Therefore, a Gaussian fit of limited number of values around the maximum is reasonable. Idea behind this is that values like chi2 and sigma should be within a reasonable range - you can see this by quickly plotting them (individually for each ROI) from the [ROOT file](#root-file). The list of variables available in the *ResCont* are 
+
+Moreover, it contain also details on Gaussian fit, such as:
 
 - *gfit_chi2*; chi2 of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,
 - *gfit_sigma*; sigma of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,  
 - *gfit_mu*; mu of the [Gaussian fit](#validity-of-the-calculated-shift) of the *dp_vector* around the region of *dot_product*,
 - *time*; time
 
+The distribution of *chi2* or *sigma* of the Gaussian fits for the entire matrix should be, once again, peak-shaped. It is reasonable to assume that outlaying values are product of invalid fits (due to limited statistics or other reasons) and thus their status can be manually set to invalid, as mentioned above.
+
 ## Spline interpolation
-Simply put, what this any any other code for time correction does, is that it subdivides the data set into smaller ones and "recalibrate" them individually. In case of CCM, the subdivision is given by the number of time-bins of the TEMAT. Number of time-bins/subdivisions is however limited by available statistics. 
+Simply put, what this any any other code for time correction does, is that it subdivides the data set into smaller time-restricted energy spectra and "recalibrate" them individually. In case of CCM, the subdivision is given by the number of time-bins of the TEMAT. Number of these subdivisions is however limited by available statistics. 
 
 The observed time instability is (at least in my experience) usually continuous (see exception in the example data). If that is the case, it can be used to our advantage: for a given ROI, we can interpolate between the calculated shifts to artificially obtain much higher subdivision in time. If enabled, the new "artificial" shifts are calculated using a *TSpline3*, which is constructed from the available data. The spline can be also used to replace [invalid shifts](validity-of-the-calculated-shift), but only if there exist valid points around it (in lower and higher time slices). Spline is never used to extrapolate the values outside of the first and last valid time range (given by time of the respective bin centers).
 	
