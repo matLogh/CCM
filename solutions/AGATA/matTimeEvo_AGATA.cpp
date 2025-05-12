@@ -286,7 +286,7 @@ void parseArguments(int                       argc,
         }
         else if (arg == "--crys")
         {
-            while (i + 1 < argc && std::string(argv[i + 1]).size() == 3 &&)
+            while (i + 1 < argc && std::string(argv[i + 1]).size() == 3)
             {
                 std::string cry = argv[i + 1];
                 if (!(cry.size() == 3 && std::isdigit(cry[0]) && std::isdigit(cry[1]) &&
