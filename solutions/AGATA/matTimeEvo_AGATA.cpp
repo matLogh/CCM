@@ -374,5 +374,5 @@ int main(int argc, char **argv)
         std::cerr << "No run number specified. Use --run option." << std::endl;
         return 1;
     }
-    return CoresTimeEvo(run, crystals, number_of_seconds_per_bin, maxentries);
+    return CoresTimeEvo(run, crystals, number_of_seconds_per_bin, maxentries, outDir);
 }
