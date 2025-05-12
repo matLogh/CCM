@@ -199,7 +199,7 @@ int CoresTimeEvo(int                 runNr,
                                          .count();
             double progress = static_cast<double>(entry) / TotalNumberOfEntries;
             double estimated_total_time = elapsed_seconds / progress;
-            double remaining_time       = estimated_total_time - elapsed_seconds;
+            int    remaining_time       = estimated_total_time - elapsed_seconds;
 
             std::cout << "\rProcessed " << entry << " / " << TotalNumberOfEntries << " ("
                       << (progress * 100.0) << "%)"
@@ -208,9 +208,6 @@ int CoresTimeEvo(int                 runNr,
                       << "s                                         " << std::flush;
         }
     }
-    std::cout << std::endl; // Ensure the progress line is cleared after the loop
-    std::cout << std::endl;
-
     for (int i = 0; i < root_files.size(); i++)
     {
         std::cout << "\nWriting matrix for crystal " << crystals[i] << std::endl;
@@ -220,11 +217,6 @@ int CoresTimeEvo(int                 runNr,
         file->cd();
         hE0_TS->Write();
     }
-
-    // system( ("mkdir " + outDirName).c_str() );
-
-    std::cout << "End of Program" << std::endl;
-
     return 0;
 }
 
@@ -294,8 +286,14 @@ void parseArguments(int                       argc,
         }
         else if (arg == "--crys")
         {
-            while (i + 1 < argc && std::string(argv[i + 1]).size() == 3)
+            while (i + 1 < argc && std::string(argv[i + 1]).size() == 3 &&)
             {
+                std::string cry = argv[i + 1];
+                if (!(cry.size() == 3 && std::isdigit(cry[0]) && std::isdigit(cry[1]) &&
+                      (cry[2] == 'A' || cry[2] == 'B' || cry[2] == 'C')))
+                {
+                    break;
+                }
                 if (std::find(crystals.begin(), crystals.end(), argv[i + 1]) ==
                     crystals.end())
                 {
@@ -317,10 +315,9 @@ void parseArguments(int                       argc,
                 "11B", "11C", "12A", "12B", "12C", "14A", "14B", "14C"};
             for (const auto &cry : _c)
             {
-                if (std::find(crystals.begin(), crystals.end(), argv[i + 1]) ==
-                    crystals.end())
+                if (std::find(crystals.begin(), crystals.end(), cry) == crystals.end())
                 {
-                    crystals.emplace_back(argv[++i]);
+                    crystals.emplace_back(cry);
                 }
             }
         }

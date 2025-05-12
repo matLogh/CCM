@@ -500,53 +500,53 @@ void print_help()
               << "Options:\n";
     std::cout << "  --help                     Display this help message "
                  "and exit.\n";
-    std::cout << "  --crystal [1]              Specify the crystal name "
+    std::cout << "  --crystal <1>              Specify the crystal name "
                  "(e.g. 00A).\n";
-    std::cout << "  --run [1]                  Specify the run number\n";
-    std::cout << "  --ROI [1] [2] [3] [4] [5]  Specify the Region of "
+    std::cout << "  --run <1>                  Specify the run number\n";
+    std::cout << "  --ROI <1> <2> <3> <4> <5>  Specify the Region of "
                  "Interest (ROI) as:\n"
-              << "                                [1] - desired energy of "
+              << "                                <1> - desired energy of "
                  "the ROI\n"
-              << "                                [2] - left edge of ROI n\n"
-              << "                                [3] - right edge of ROI\n"
-              << "                                [4] - shift ROI by "
-                 "maximum of [4] to "
+              << "                                <2> - left edge of ROI n\n"
+              << "                                <3> - right edge of ROI\n"
+              << "                                <4> - shift ROI by "
+                 "maximum of <4> to "
                  "the LEFT (neg value!)\n"
-              << "                                [5] - shift ROI by "
-                 "maximum of [5] to "
+              << "                                <5> - shift ROI by "
+                 "maximum of <5> to "
                  "the RIGHT\n";
 
     std::cout
-        << "  --ROIsource [1]            Define ROI for calibration sources. Currently "
+        << "  --ROIsource <1>            Define ROI for calibration sources. Currently "
            "recognized are: 60Co \n";
-    std::cout << "  --ref_time [1] [2]         Specify the reference time "
+    std::cout << "  --ref_time <1> <2>         Specify the reference time "
                  "interval \n";
-    std::cout << "  --fit_peak [1] [2] [3]     If running in minimization "
+    std::cout << "  --fit_peak <1> <2> <3>     If running in minimization "
                  "mode, specify "
                  "peak used \n"
               << "                                which FWFM is used to "
                  "find the optimal "
                  "parameters\n"
-              << "                                [1] peak center\n"
-              << "                                [2] left fit region \n"
-              << "                                [3] right fit region \n"
+              << "                                <1> peak center\n"
+              << "                                <2> left fit region \n"
+              << "                                <3> right fit region \n"
               << "                             Specify the peak used to "
                  "find optimal "
                  "parameters \n"
               << "                             Note that this should be different peak "
                  "than one contained in ROI, otherwise you are risking overfitting\n";
 
-    std::cout << "  --rootfile [1]             Specify the root file "
+    std::cout << "  --rootfile <1>             Specify the root file "
                  "name\n";
-    std::cout << "  --matrix [1]               Specify the matrix name \n";
-    std::cout << "  --conf [1]                 Specify file where to save the "
+    std::cout << "  --matrix <1>               Specify the matrix name \n";
+    std::cout << "  --conf <1>                 Specify file where to save the "
                  "parameters. Can be deduced automatically. \n";
     std::cout
         << "  --super_settings           Run corrections with hardcoded parameters \n";
-    // std::cout << "  --reference_other_run [1]  If you want to use the reference/sample
+    // std::cout << "  --reference_other_run <1>  If you want to use the reference/sample
     // "
     //              "vector from a previous run.\n";
-    std::cout << "  --chain_runs [1] ...      Specify the runs that will use the same "
+    std::cout << "  --chain_runs <1> [...]     Specify the runs that will use the same "
                  "reference time as one defined by --run\n";
     std::cout << std::endl << std::endl;
 }
