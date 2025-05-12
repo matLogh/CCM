@@ -18,6 +18,7 @@ make -j4
 
 Executables ```simple_example``` and ```optimizer``` will be created that are using the data set from the ```data/``` directory. Source code ```simple_example.cpp``` showcases the most basic usage of the code. The ```optimizer.cpp``` demonstrate an automated brute-force approach to find the ideal parameters of the CCM in order to obtain the best result - in this case defined as a lowest FWHM for given peak. 
 
+Project is using *theuerkauf_fitter* submodule, that is automatically cloned when calling ```cmake```.
 
 # How to use the code
 ## Basics
@@ -211,18 +212,63 @@ Moreover, it contain also details on Gaussian fit, such as:
 
 The distribution of *chi2* or *sigma* of the Gaussian fits for the entire matrix should be, once again, peak-shaped. It is reasonable to assume that outlaying values are product of invalid fits (due to limited statistics or other reasons) and thus their status can be manually set to invalid, as mentioned above.
 
-## Spline interpolation
-Simply put, what this any any other code for time correction does, is that it subdivides the data set into smaller time-restricted energy spectra and "recalibrate" them individually. In case of CCM, the subdivision is given by the number of time-bins of the TEMAT. Number of these subdivisions is however limited by available statistics. 
+## Interpolations
+Simply put, what this any any other code for time correction does, is that it divides the data set into smaller time-gated energy spectra and "recalibrate" them individually. In case of CCM, the division is given by the number of time-bins of the TEMAT. However, their number is limited by available statistics. 
 
-The observed time instability is (at least in my experience) usually continuous (see exception in the example data). If that is the case, it can be used to our advantage: for a given ROI, we can interpolate between the calculated shifts to artificially obtain much higher subdivision in time. If enabled, the new "artificial" shifts are calculated using a *TSpline3*, which is constructed from the available data. The spline can be also used to replace [invalid shifts](validity-of-the-calculated-shift), but only if there exist valid points around it (in lower and higher time slices). Spline is never used to extrapolate the values outside of the first and last valid time range (given by time of the respective bin centers).
-	
-## Own reference vector
+As mentioned few times above, CCM is calculating energy shift between the *reference vector* and the *sample vector*. Example figure of original TEMAT and calculated shifts from ```simple_example.cpp``` can be seen in the figure below ![data from simple_example.cpp](pics/simpex_shifts.jpg "")
 
-In case you need to correct multiple detectors with same properties (e.g. gamma detectors in an array) you manually set your reference vector used in the calculations by calling
+If the observed instability is mostly smooth, which it mostly is in this example case, a subdivision in time can be used to improve results. Subdivision is done by interpolating shift values between calculated points (of same ROI). Interpolation is switched on by default or by calling 
 ```cpp
-void SetReferenceVector(const std::vector<double> &own_reference_vector)
+fix.EnableInterpolation(ROI_index);
+```
+or can be disabled by 
+```cpp
+fix.DisableInterpolation(ROI_index);
 ```
 
+ROOT's built-in interpolators are used for this task, you can configure them by calling
+```cpp
+void ConfigureShiftInterpolator(const std::string type = "AKIMA", const bool        valid_only = true);
+```
+or with overloaded function
+```cpp
+void ConfigureShiftInterpolator(const ROOT::Math::Interpolation::Type type, const bool valid_only = true);
+```
+with these interpolators types:
+- "POLYNOMIAL" - only for small number of points, introduces large oscillations,
+- "CSPLINE" - cubic spline with natural boundary conditions,
+- "CSPLINE_PERIODIC" - cubic spline with periodic boundary conditions,
+- "AKIMA" - Akima spline with natural boundary conditions ( requires a minimum of 5 points)
+- "AKIMA_PERIODIC" - Akima spline with periodic boundaries ( requires a minimum of 5 points)
 
-## Fitter
-In the source files I added "my" pure C++ fitter using the Theuerkauf peak model used in the [HDTV program](https://github.com/janmayer/hdtv/tree/master). Large part of the fitter code is borrowed from there.
+Moreover, because I hate having free time, I also implemented **smoothing**. In several cases, it seems that the although the calculated shifts are following some smooth pattern, the calculated shifts has some noisy distribution around the perceived pattern. An idea to get rid of this noise is to smooth the shift values of the same ROI, it is done using ROOT's built in smoothers. For better understanding of the parameters and ways they work [check this ROOT's tutorial code](https://root.cern/doc/v608/motorcycle_8C.html). You can smooth shifts by calling
+```cpp
+void SmoothShifts(const SmootherType smoother, const double smoother_parameter, const size_t ROI_index);
+```
+with ```SmootherType``` being
+- TEC::SmootherType::KERNEL
+- TEC::SmootherType::LOWESS
+- TEC::SmootherType::SUPER
+Each smoother has a parameter that should be set up for best performance.
+
+## Diagnostic
+For diagnostic you can use following graph-producing functions:
+```cpp
+std::unique_ptr<TGraph> GetROIShifts(const size_t roi_index, const bool valid_only = true);
+```
+This will produce a graph of all calculated shifts of given ROI. 
+
+
+```cpp
+std::unique_ptr<TGraph> GetInterpolationGraph(const size_t ROI_index, const int    subdivide  = 10, const bool valid_only = true);
+```
+Similar as above, but more interpolated points are added (depends on the interpolator settings!).
+
+```cpp
+std::unique_ptr<TGraph> GetShiftProfile(const int  time_bin, const bool valid_only = true);
+``` 
+And this one will produce a plot of shift as a function of ROI's energy at given time. Useful to estimate what correction function should be used.
+
+
+# Fitter
+In the source files I added "my" pure C++ fitter using the Theuerkauf peak model used in the [HDTV program](https://github.com/janmayer/hdtv/tree/master). Idea and large part of the fitter code is borrowed from there.

@@ -10,7 +10,7 @@ Fixing the time-varying energy gain of AGATA requires following steps:
 
 Executable ```matTimeEvo_AGATA``` is made for this exact purpose, use the ```--help``` for full list of input options. Matrices are constructed from trees produced by TreeBuilder consumer of narval/femul. Matrices are constructed **only for the core hits**.
 
-This executable is looking for trees in the hardcoded path ```Data/run_XXXX/Out_NC/Analysis/Tree_*.root"``` and writes matrix of each crystal into a separate output file in ```Out/run_XXXX/out_XXXX_CRY.root```. 
+This executable is looking for trees in the hardcoded path ```run_XXXX/Out/Analysis/Tree_*.root"``` and writes matrix of each crystal into a separate output file in ```run_XXXX/Out/TimeEvo/out_XXXX_CRY.root```. Therefore, if you following standard AGATA folder naming and arrangement conventions, **you should be within your ```Replay``` folder to run this executable**.
 
 Time range of the matrices is plotted in minutes and is deduced from the first and last timestamp in the data. Binning is by default set to 30 seconds/bin, but this can changed using ```--Tbinning``` switch. Energy range is defaulted to 32 000 bins spread from 0 to 8 000keV, but can be changed using the ```--Ebinning``` switch.
 
