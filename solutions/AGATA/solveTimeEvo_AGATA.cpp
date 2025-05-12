@@ -67,6 +67,7 @@ std::string        gMATRIX_NAME   = "";
 std::string        gCONF          = "";
 int                gREFERENCE_RUN = -1;
 std::vector<float> gREFERENCE_VECTOR;
+std::vector<int>   gCHAIN_RUNS;
 
 const double MINUTES_TO_TIMESTAMPS = 6.0e9;
 
@@ -271,10 +272,10 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
     // CCM ccm_fix(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
 
     std::string addressStr = "gain_fcn_" + get_pointer_string(&ccm_fix);
-    TF1         fcn("gain_fcn", "[0]*x", 0, 32000);
+    TF1         fcn(addressStr.c_str(), "[0]*x", 0, 32000);
 
     ccm_fix->SetCorrectionFunction(fcn, "");
-    ccm_fix->CalculateEnergyShifts(4);
+    ccm_fix->CalculateEnergyShifts(8);
 
     if (settings.use_gaussian) { ccm_fix->UseGaussianResult(); }
     else { ccm_fix->UsePolynomialResult(); }
@@ -515,8 +516,9 @@ void print_help()
                  "maximum of [5] to "
                  "the RIGHT\n";
 
-    std::cout << "  --ROIsource [1] Define ROI for calibration sources. Currently "
-                 "recognized are: 60Co \n";
+    std::cout
+        << "  --ROIsource [1]            Define ROI for calibration sources. Currently "
+           "recognized are: 60Co \n";
     std::cout << "  --ref_time [1] [2]         Specify the reference time "
                  "interval \n";
     std::cout << "  --fit_peak [1] [2] [3]     If running in minimization "
@@ -541,8 +543,11 @@ void print_help()
                  "parameters. Can be deduced automatically. \n";
     std::cout
         << "  --super_settings           Run corrections with hardcoded parameters \n";
-    std::cout << "  --reference_other_run [1]  If you want to use the reference/sample "
-                 "vector from a previous run.\n";
+    // std::cout << "  --reference_other_run [1]  If you want to use the reference/sample
+    // "
+    //              "vector from a previous run.\n";
+    std::cout << "  --chain_runs [1] ...      Specify the runs that will use the same "
+                 "reference time as one defined by --run\n";
     std::cout << std::endl << std::endl;
 }
 
@@ -642,11 +647,10 @@ bool can_create_file(const std::string &path)
     }
 }
 
-void set_reference_vector()
+void set_reference_vector(const int ref_run, const int run)
 {
-    std::string reference_root_file = "Out/run_" + fourCharInt(gREFERENCE_RUN) + "/out_" +
-                                      fourCharInt(gREFERENCE_RUN) + "_" + gCRYSTAL +
-                                      ".root";
+    std::string reference_root_file = "Out/run_" + fourCharInt(ref_run) + "/out_" +
+                                      fourCharInt(ref_run) + "_" + gCRYSTAL + ".root";
 
     TFile *matfile = TFile::Open(reference_root_file.c_str(), "READ");
     if (!matfile || matfile->IsZombie())
@@ -685,22 +689,48 @@ void parse_args(int argc, char **argv)
             if (i + 1 < argc) { gCRYSTAL = argv[++i]; }
             else { throw std::runtime_error("Missing value for --crystal"); }
         }
-        else if (arg == "--reference_other_run")
+        else if (arg == "--chain_runs")
         {
             if (i + 1 < argc)
             {
-                try
+                gCHAIN_RUNS.clear(); // Clear any previous values
+                while (i + 1 < argc && std::isdigit(argv[i + 1][0]))
                 {
-                    gREFERENCE_RUN = std::stoi(argv[++i]);
+                    try
+                    {
+                        gCHAIN_RUNS.push_back(std::stoi(argv[++i]));
+                    }
+                    catch (const std::invalid_argument &)
+                    {
+                        throw std::runtime_error(
+                            "Invalid integer value for --chain_runs");
+                    }
                 }
-                catch (const std::invalid_argument &)
+                if (gCHAIN_RUNS.empty())
                 {
                     throw std::runtime_error(
-                        "Invalid integer value for --reference_other_run");
+                        "--chain_runs must be followed by at least one integer");
                 }
             }
-            else { throw std::runtime_error("Missing value for --reference_other_run"); }
+            else { throw std::runtime_error("Missing value for --chain_runs"); }
         }
+        // else if (arg == "--reference_other_run")
+        // {
+        //     if (i + 1 < argc)
+        //     {
+        //         try
+        //         {
+        //             gREFERENCE_RUN = std::stoi(argv[++i]);
+        //         }
+        //         catch (const std::invalid_argument &)
+        //         {
+        //             throw std::runtime_error(
+        //                 "Invalid integer value for --reference_other_run");
+        //         }
+        //     }
+        //     else { throw std::runtime_error("Missing value for --reference_other_run");
+        //     }
+        // }
         else if (arg == "--conf")
         {
             if (i + 1 < argc) { gCONF = argv[++i]; }
@@ -815,14 +845,11 @@ void parse_args(int argc, char **argv)
         {
             std::string fname =
                 gCRYSTAL.empty() ? "TimeEvoCC.conf" : "TimeEvoCC_" + gCRYSTAL + ".conf";
-            gCONF = "Conf/" + gCRYSTAL + "/" + fname;
+            gCONF = "run_" + fourCharInt(gRUN) + "/Conf/" + gCRYSTAL + "/" + fname;
             if (!can_create_file(gCONF)) { gCONF = fname; }
         }
         std::cout << "Output configuration file will be saved to: " << gCONF << std::endl;
     }
-
-    // setup reference vector
-    if (gREFERENCE_RUN != -1) { set_reference_vector(); }
 
     // Print all parsed input parameters
     std::cout << "Parsed Input Parameters:" << std::endl;
@@ -842,6 +869,42 @@ void parse_args(int argc, char **argv)
     std::cout << std::endl;
     std::cout << "  Use Super Settings: " << std::boolalpha << gUSE_SUPER_SETTINGS
               << std::endl;
+}
+
+void run_chained_runs(const ccm_settings &optimal_settings)
+{
+    if (gCHAIN_RUNS.empty()) { return; }
+
+    set_reference_vector(gRUN, gCHAIN_RUNS.at(0));
+    for (const auto c_run : gCHAIN_RUNS)
+    {
+
+        std::string c_rootfile = "run_" + fourCharInt(c_run) + "/Out/TimeEvo/out_" +
+                                 fourCharInt(c_run) + "_" + gCRYSTAL + ".root";
+
+        TFile *matfile = TFile::Open(c_rootfile.c_str(), "READ");
+        if (!matfile || matfile->IsZombie())
+        {
+            throw std::runtime_error("Error! could not open/find the " + c_rootfile +
+                                     " file");
+        }
+        // matrix name is the same, we can use gMATRIX_NAME
+        std::shared_ptr<TH2> TEMAT_original((TH2 *)matfile->Get(gMATRIX_NAME.c_str()));
+        if (!TEMAT_original)
+        {
+            throw std::runtime_error("Error! could not open/find the " + gMATRIX_NAME +
+                                     " matrix");
+        }
+
+        // set conf path for output file
+        std::string fname =
+            gCRYSTAL.empty() ? "TimeEvoCC.conf" : "TimeEvoCC_" + gCRYSTAL + ".conf";
+        gCONF = "run_" + fourCharInt(c_run) + "/Conf/" + gCRYSTAL + "/" + fname;
+        if (!can_create_file(gCONF)) { gCONF = fname; }
+
+        std::cout << "Running chained run: " << c_run << std::endl;
+        run_ccm_super_settings(TEMAT_original, optimal_settings);
+    }
 }
 
 int main(int argc, char **argv)
@@ -915,12 +978,3 @@ int main(int argc, char **argv)
 
     return 0;
 }
-
-// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

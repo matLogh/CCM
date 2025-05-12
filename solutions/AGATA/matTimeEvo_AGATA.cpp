@@ -73,7 +73,7 @@ int CoresTimeEvo(int                 runNr,
 {
 
     string inFilePattern = "run_" + fourCharInt(runNr) + "/Out/Analysis" + "/Tree_";
-    string outDirName    = "run_" + fourCharInt(runNr) + "/Out/TimeEvo";
+    string outDirName    = "run_" + fourCharInt(runNr) + "/TimeEvo";
     createDirectoryIfNotExists(outDirName);
 
     std::vector<Int_t> crystalIds;
