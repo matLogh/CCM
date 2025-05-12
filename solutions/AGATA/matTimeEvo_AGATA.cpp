@@ -69,11 +69,13 @@ void createDirectoryIfNotExists(const std::string &path)
 int CoresTimeEvo(int                 runNr,
                  std::vector<string> crystals,
                  int                 seconds_per_bin,
-                 ULong64_t           maxEntries = 0)
+                 ULong64_t           maxEntries = 0,
+                 std::string         outDir     = "")
 {
 
     string inFilePattern = "run_" + fourCharInt(runNr) + "/Out/Analysis" + "/Tree_";
     string outDirName    = "run_" + fourCharInt(runNr) + "/TimeEvo";
+    if (!outDir.empty()) outDirName = outDir;
     createDirectoryIfNotExists(outDirName);
 
     std::vector<Int_t> crystalIds;
@@ -241,18 +243,21 @@ void printHelp()
     std::cout << "  --allcrys                 Run for all crystals of EXP_035\n";
     std::cout
         << "  --Tbinning <integer>      Set number of seconds per bin (default 30)\n";
-    std::cout << "  --Ebinning [1] [2] [3]    Set energy binning as: \n"
-              << "                                [1] number of bins (default 32 000)\n"
-              << "                                [2] min energy (default 0) \n"
-              << "                                [3] max energy(default 8 000)\n";
+    std::cout << "  --Ebinning <1> <2> <3>    Set energy binning as: \n"
+              << "                                <1> number of bins (default 32 000)\n"
+              << "                                <2> min energy (default 0) \n"
+              << "                                <3> max energy (default 8 000)\n";
+    std::cout << "  --outdir [string]   Specify output directory (default: "
+                 "run_<run>/TimeEvo)\n";
 }
 
 void parseArguments(int                       argc,
                     char                    **argv,
                     int                      &binning,
                     int                      &run,
-                    int                      &maxEntries,
-                    std::vector<std::string> &crystals)
+                    Long64_t                 &maxEntries,
+                    std::vector<std::string> &crystals,
+                    std::string              &outDir)
 {
     for (int i = 1; i < argc; ++i)
     {
@@ -284,7 +289,7 @@ void parseArguments(int                       argc,
         }
         else if (arg == "--maxentries")
         {
-            if (i + 1 < argc) { maxEntries = std::stoi(argv[++i]); }
+            if (i + 1 < argc) { maxEntries = std::stol(argv[++i]); }
             else { throw std::invalid_argument("Missing value for --maxentries"); }
         }
         else if (arg == "--crys")
@@ -319,6 +324,11 @@ void parseArguments(int                       argc,
                 }
             }
         }
+        else if (arg == "--outdir")
+        {
+            if (i + 1 < argc) { outDir = argv[++i]; }
+            else { throw std::invalid_argument("Missing value for --outdir"); }
+        }
         else
         {
             printHelp();
@@ -338,18 +348,21 @@ int main(int argc, char **argv)
     }
 
     int                      run;
-    int                      maxentries = 0;
+    Long64_t                 maxentries = 0;
     std::vector<std::string> crystals;
     int                      number_of_seconds_per_bin = 30;
+    std::string              outDir{};
 
-    parseArguments(argc, argv, number_of_seconds_per_bin, run, maxentries, crystals);
+    parseArguments(argc, argv, number_of_seconds_per_bin, run, maxentries, crystals,
+                   outDir);
 
     std::cout << "Parameters used are:" << std::endl;
-    std::cout << "Run number: " << run << std::endl;
-    std::cout << "Seconds per bin: " << number_of_seconds_per_bin << std::endl;
-    std::cout << "Max entries: " << maxentries << std::endl;
+    std::cout << "Run number:       " << run << std::endl;
+    std::cout << "Seconds per bin:  " << number_of_seconds_per_bin << std::endl;
+    std::cout << "Max entries:      " << maxentries << std::endl;
+    std::cout << "Output directory: " << outDir << std::endl;
 
-    for (const auto &cry : crystals) { std::cout << "Crystal: " << cry << std::endl; }
+    for (const auto &cry : crystals) { std::cout << "   crystal: " << cry << std::endl; }
 
     if (crystals.empty())
     {
