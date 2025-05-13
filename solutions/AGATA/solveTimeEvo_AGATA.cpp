@@ -63,8 +63,8 @@ std::vector<float> gREFERENCE_TIME;
 std::vector<float> gFIT_PEAK;
 bool               gUSE_SUPER_SETTINGS{false};
 std::string        gROOTFILE      = "";
+std::string        gDIR           = "";
 std::string        gMATRIX_NAME   = "";
-std::string        gCONF          = "";
 int                gREFERENCE_RUN = -1;
 std::vector<float> gREFERENCE_VECTOR;
 std::vector<int>   gCHAIN_RUNS;
@@ -76,6 +76,46 @@ std::string fourCharInt(int I)
     std::stringstream ID;
     ID << std::setfill('0') << std::setw(4) << I;
     return ID.str();
+}
+
+bool can_create_file(const std::string &path)
+{
+    try
+    {
+        // Extract the directory from the path
+        std::filesystem::path file_path(path);
+        std::filesystem::path dir_path = file_path.parent_path();
+
+        // Check if the directory exists
+        if (!dir_path.empty() && !std::filesystem::exists(dir_path))
+        {
+            if (!std::filesystem::create_directories(dir_path))
+            {
+                std::cerr << "Error: Unable to create directory: " << dir_path
+                          << std::endl;
+                return false;
+            }
+        }
+
+        // Try to create and write to the file
+        std::ofstream file(path);
+        if (!file.is_open())
+        {
+            std::cerr << "Error: Unable to create file at " << path << std::endl;
+            return false;
+        }
+
+        // Close the file and delete it (cleanup)
+        file.close();
+        std::filesystem::remove(path);
+
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Exception: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 int get_crystal_id(const std::string &input)
@@ -234,9 +274,12 @@ double fitfcn(double *x, double *par)
     return par[0] * x[0];
 }
 
-void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &settings)
+void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
+                            const ccm_settings  &settings,
+                            std::string          output_conffilename)
 {
-    std::cout << "Running final corrections with super settings..." << std::endl;
+    std::cout << "Running final corrections for run " << gRUN << " with super settings..."
+              << std::endl;
     settings.print_header(std::cout);
     settings.print_values(std::cout);
 
@@ -296,39 +339,46 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
         ccm_fix->SmoothShifts(settings.smoother_type, settings.smoother_par);
     }
 
-    write_timeevo_agata_file(ccm_fix, gCONF, 30);
+    write_timeevo_agata_file(ccm_fix, output_conffilename, 30);
 
     {
         std::ostringstream oss;
         oss << std::setw(4) << std::setfill('0') << gRUN;
-        std::string diagnostic_file_name =
-            "correctedTimeEvo_run_" + oss.str() + "_" + gCRYSTAL + ".root";
-        TFile diagnostic_file(diagnostic_file_name.c_str(), "recreate");
-        if (!diagnostic_file.IsOpen())
+        std::string diagnostic_file_name = gDIR +
+                                           "/diagnostic/"
+                                           "correctedTimeEvo_run_" +
+                                           oss.str() + "_" + gCRYSTAL + ".root";
+        if (can_create_file(diagnostic_file_name))
         {
-            std::cerr << "Error opening file: " << diagnostic_file_name << std::endl;
-            return;
+
+            TFile diagnostic_file(diagnostic_file_name.c_str(), "recreate");
+            if (!diagnostic_file.IsOpen())
+            {
+                std::cerr << "Error opening file: " << diagnostic_file_name << std::endl;
+                return;
+            }
+            diagnostic_file.cd();
+
+            settings.print_values(std::cout);
+            auto TEMAT_fixed = ccm_fix->FixMatrix(TEMAT.get());
+
+            std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
+            TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
+            auto        shifts    = ccm_fix->GetROIShifts(0);
+            auto        profile =
+                ccm_fix->GetInterpolationGraph(0, settings.temat_rebin_x, true);
+
+            TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
+                                                  gROIarr.at(2) + gROIarr.at(4));
+            TEMAT->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
+                                            gROIarr.at(2) + gROIarr.at(4));
+
+            TEMAT->Write();
+            proj->Write();
+            TEMAT_fixed->Write();
+            shifts->Write();
+            profile->Write();
         }
-        diagnostic_file.cd();
-
-        settings.print_values(std::cout);
-        auto TEMAT_fixed = ccm_fix->FixMatrix(TEMAT.get());
-
-        std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
-        TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
-        auto        shifts    = ccm_fix->GetROIShifts(0);
-        auto profile = ccm_fix->GetInterpolationGraph(0, settings.temat_rebin_x, true);
-
-        TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
-                                              gROIarr.at(2) + gROIarr.at(4));
-        TEMAT->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
-                                        gROIarr.at(2) + gROIarr.at(4));
-
-        TEMAT->Write();
-        proj->Write();
-        TEMAT_fixed->Write();
-        shifts->Write();
-        profile->Write();
     }
 }
 
@@ -535,19 +585,19 @@ void print_help()
                  "parameters \n"
               << "                             Note that this should be different peak "
                  "than one contained in ROI, otherwise you are risking overfitting\n";
-
+    std::cout << "  --dir <1>                  Set directory in which to search for "
+                 "matrices and where TimeEvoCC.conf files will be saved\n";
     std::cout << "  --rootfile <1>             Specify the root file "
                  "name\n";
     std::cout << "  --matrix <1>               Specify the matrix name \n";
-    std::cout << "  --conf <1>                 Specify file where to save the "
-                 "parameters. Can be deduced automatically. \n";
     std::cout
         << "  --super_settings           Run corrections with hardcoded parameters \n";
     // std::cout << "  --reference_other_run <1>  If you want to use the reference/sample
     // "
     //              "vector from a previous run.\n";
-    std::cout << "  --chain_runs <1> [...]     Specify the runs that will use the same "
-                 "reference time as one defined by --run\n";
+    std::cout
+        << "  --chain_runs <1> [...]     Specify the runs that are going to use the same "
+           "reference vector as defined for --run\n";
     std::cout << std::endl << std::endl;
 }
 
@@ -573,7 +623,7 @@ std::vector<float> parse_space_separated_floats(int &i, int argc, char **argv, i
     return result;
 }
 
-std::vector<float> parse_ROI_source(char *argv)
+void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &fit_peak)
 {
     std::string source = argv;
     std::transform(source.begin(), source.end(), source.begin(),
@@ -581,7 +631,8 @@ std::vector<float> parse_ROI_source(char *argv)
 
     if (source == "60co" || "co60")
     {
-        return {1332.501, 1300., 1370., -50, 50}; // Example values for 60Co
+        ROI      = {1332.492, 1300., 1370., -50, 50}; // Example values for 60Co
+        fit_peak = {1173.228, 1165., 1185.};
     }
     else if (source == "152eu" || "eu152")
     {
@@ -608,49 +659,27 @@ std::vector<float> parse_ROI_source(char *argv)
         throw std::runtime_error("Na-22 source is not implemented yet");
     }
     else { throw std::runtime_error("Unknown source: " + source); }
-    return {-1.};
 }
 
-bool can_create_file(const std::string &path)
+std::string get_conffilename(int run, std::string crystal)
 {
-    try
-    {
-        // Extract the directory from the path
-        std::filesystem::path file_path(path);
-        std::filesystem::path dir_path = file_path.parent_path();
+    std::string conffile =
+        gDIR + "/" + "run_" + fourCharInt(run) + "/Conf/" + crystal + "/TimeEvoCC.conf";
+    if (!can_create_file(conffile))
+        throw std::runtime_error("Problem with creating output configuration file\n");
+    return conffile;
+}
 
-        // Check if the directory exists
-        if (!dir_path.empty() && !std::filesystem::exists(dir_path))
-        {
-            // std::cerr << "Error: Directory does not exist: " << dir_path << std::endl;
-            return false;
-        }
-
-        // Try to create and write to the file
-        std::ofstream file(path);
-        if (!file.is_open())
-        {
-            std::cerr << "Error: Unable to create file at " << path << std::endl;
-            return false;
-        }
-
-        // Close the file and delete it (cleanup)
-        file.close();
-        std::filesystem::remove(path);
-
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "Exception: " << e.what() << std::endl;
-        return false;
-    }
+std::string get_rootfilename(int run, std::string crystal)
+{
+    return gDIR + "/timeEvo/temat_" + fourCharInt(gRUN) + "_" + gCRYSTAL + ".root";
 }
 
 void set_reference_vector(const int ref_run, const int run)
 {
-    std::string reference_root_file = "Out/run_" + fourCharInt(ref_run) + "/out_" +
-                                      fourCharInt(ref_run) + "_" + gCRYSTAL + ".root";
+    // std::string reference_root_file = "Out/run_" + fourCharInt(ref_run) + "/out_" +
+    //                                   fourCharInt(ref_run) + "_" + gCRYSTAL + ".root";
+    std::string reference_root_file = get_rootfilename(ref_run, gCRYSTAL);
 
     TFile *matfile = TFile::Open(reference_root_file.c_str(), "READ");
     if (!matfile || matfile->IsZombie())
@@ -714,27 +743,12 @@ void parse_args(int argc, char **argv)
             }
             else { throw std::runtime_error("Missing value for --chain_runs"); }
         }
-        // else if (arg == "--reference_other_run")
-        // {
-        //     if (i + 1 < argc)
-        //     {
-        //         try
-        //         {
-        //             gREFERENCE_RUN = std::stoi(argv[++i]);
-        //         }
-        //         catch (const std::invalid_argument &)
-        //         {
-        //             throw std::runtime_error(
-        //                 "Invalid integer value for --reference_other_run");
-        //         }
-        //     }
-        //     else { throw std::runtime_error("Missing value for --reference_other_run");
-        //     }
-        // }
-        else if (arg == "--conf")
+
+        else if (arg == "--dir")
         {
-            if (i + 1 < argc) { gCONF = argv[++i]; }
-            else { throw std::runtime_error("Missing value for --conf_path"); }
+            if (i + 1 < argc) { gDIR = argv[++i]; }
+            else { throw std::runtime_error("Missing value for --dir"); }
+            if (gDIR.back() == '/' && gDIR.size() > 1) gDIR.pop_back();
         }
         else if (arg == "--rootfile" || arg == "--rfile")
         {
@@ -763,10 +777,19 @@ void parse_args(int argc, char **argv)
         }
         else if (arg == "--ROIsource")
         {
-            if (i + 1 < argc) { gROIarr = parse_ROI_source(argv[++i]); }
+            std::vector<float> peak;
+            if (i + 1 < argc)
+            {
+                parse_ROI_source(argv[++i], gROIarr, peak);
+                if (gFIT_PEAK.empty()) { gFIT_PEAK = peak; }
+                else
+                {
+                    std::cerr << "Warning: --fit_peak is overwriting peak defined by "
+                                 "--ROIsource\n";
+                }
+            }
             else { throw std::runtime_error("Missing value for --ROIsource"); }
         }
-
         else if (arg == "--ROI")
         {
             gROIarr =
@@ -830,26 +853,9 @@ void parse_args(int argc, char **argv)
     // matTimeEvo_AGATA.cpp
     if (!gCRYSTAL.empty()) { auto crysId = get_crystal_id(gCRYSTAL); }
     if (gMATRIX_NAME.empty()) { gMATRIX_NAME = "hE0_TS_" + gCRYSTAL; }
-    if (gROOTFILE.empty())
-    {
-        gROOTFILE = "run_" + fourCharInt(gRUN) + "/Out/TimeEvo/out_" + fourCharInt(gRUN) +
-                    "_" + gCRYSTAL + ".root";
-        // gROOTFILE = "Out/run_" + fourCharInt(gRUN) + "/out_" + fourCharInt(gRUN) + "_"
-        // +
-        //             gCRYSTAL + ".root";
-    }
 
-    // setup conf file
-    {
-        if (gCONF.empty() || !can_create_file(gCONF))
-        {
-            std::string fname =
-                gCRYSTAL.empty() ? "TimeEvoCC.conf" : "TimeEvoCC_" + gCRYSTAL + ".conf";
-            gCONF = "run_" + fourCharInt(gRUN) + "/Conf/" + gCRYSTAL + "/" + fname;
-            if (!can_create_file(gCONF)) { gCONF = fname; }
-        }
-        std::cout << "Output configuration file will be saved to: " << gCONF << std::endl;
-    }
+    // set
+    if (gROOTFILE.empty()) { gROOTFILE = get_rootfilename(gRUN, gCRYSTAL); }
 
     // Print all parsed input parameters
     std::cout << "Parsed Input Parameters:" << std::endl;
@@ -869,6 +875,8 @@ void parse_args(int argc, char **argv)
     std::cout << std::endl;
     std::cout << "  Use Super Settings: " << std::boolalpha << gUSE_SUPER_SETTINGS
               << std::endl;
+    std::cout << "Output configuration file will be saved to: "
+              << get_conffilename(gRUN, gCRYSTAL) << std::endl;
 }
 
 void run_chained_runs(const ccm_settings &optimal_settings)
@@ -879,8 +887,10 @@ void run_chained_runs(const ccm_settings &optimal_settings)
     for (const auto c_run : gCHAIN_RUNS)
     {
 
-        std::string c_rootfile = "run_" + fourCharInt(c_run) + "/Out/TimeEvo/out_" +
-                                 fourCharInt(c_run) + "_" + gCRYSTAL + ".root";
+        // std::string c_rootfile = "run_" + fourCharInt(c_run) + "/Out/TimeEvo/out_" +
+        //                          fourCharInt(c_run) + "_" + gCRYSTAL + ".root";
+
+        std::string c_rootfile = get_rootfilename(c_run, gCRYSTAL);
 
         TFile *matfile = TFile::Open(c_rootfile.c_str(), "READ");
         if (!matfile || matfile->IsZombie())
@@ -897,13 +907,10 @@ void run_chained_runs(const ccm_settings &optimal_settings)
         }
 
         // set conf path for output file
-        std::string fname =
-            gCRYSTAL.empty() ? "TimeEvoCC.conf" : "TimeEvoCC_" + gCRYSTAL + ".conf";
-        gCONF = "run_" + fourCharInt(c_run) + "/Conf/" + gCRYSTAL + "/" + fname;
-        if (!can_create_file(gCONF)) { gCONF = fname; }
-
-        std::cout << "Running chained run: " << c_run << std::endl;
-        run_ccm_super_settings(TEMAT_original, optimal_settings);
+        std::string conf_filename = get_conffilename(c_run, gCRYSTAL);
+        gRUN                      = c_run;
+        std::cout << std::endl << "Running chained run: " << c_run << std::endl;
+        run_ccm_super_settings(TEMAT_original, optimal_settings, conf_filename);
     }
 }
 
@@ -939,7 +946,9 @@ int main(int argc, char **argv)
         gSUPER_SETTINGS.smoother_par           = 20;
         gSUPER_SETTINGS.cost                   = std::numeric_limits<double>::quiet_NaN();
 
-        run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS);
+        run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS,
+                               get_conffilename(gRUN, gCRYSTAL));
+        run_chained_runs(gSUPER_SETTINGS);
         return 0;
     }
 
@@ -963,8 +972,8 @@ int main(int argc, char **argv)
     ccm_settings::print_header(std::cout);
     for (const auto &r : result) { r.print_values(std::cout); }
 
-    std::string minimization_file =
-        "CCMconf_r" + std::to_string(gRUN) + "_" + gCRYSTAL + ".txt";
+    std::string minimization_file = gDIR + "/diagnostics/" + "CCMconf_r" +
+                                    std::to_string(gRUN) + "_" + gCRYSTAL + ".txt";
     std::fstream out_file(minimization_file.c_str(), std::ios::out);
     if (!out_file)
     {
@@ -974,7 +983,9 @@ int main(int argc, char **argv)
     for (const auto &r : result) { r.print_values(out_file); }
 
     gSUPER_SETTINGS = result.front();
-    run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS);
+    run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS,
+                           get_conffilename(gRUN, gCRYSTAL));
+    run_chained_runs(gSUPER_SETTINGS);
 
     return 0;
 }

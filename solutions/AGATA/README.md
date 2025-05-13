@@ -10,7 +10,7 @@ Fixing the time-varying energy gain of AGATA requires following steps:
 
 Executable ```matTimeEvo_AGATA``` is made for this exact purpose, use the ```--help``` for full list of input options. Matrices are constructed from trees produced by TreeBuilder consumer of narval/femul. Matrices are constructed **only for the core hits**.
 
-This executable is looking for trees in the hardcoded path ```run_XXXX/Out/Analysis/Tree_*.root"``` and writes matrix of each crystal into a separate output file in ```run_XXXX/Out/TimeEvo/out_XXXX_CRY.root```. Therefore, if you following standard AGATA folder naming and arrangement conventions, **you should be within your ```Replay``` folder to run this executable**.
+This executable is looking for trees in the hardcoded path ```run_XXXX/Out/Analysis/Tree_*.root"``` and writes matrix of each crystal into a separate output file to ```timeEvo/temat_XXXX_CRY.root```, unless specified otherwise. Therefore, if you following standard AGATA folder naming and arrangement conventions, **you should be within your ```Replay/``` folder to run this executable**.
 
 Time range of the matrices is plotted in minutes and is deduced from the first and last timestamp in the data. Binning is by default set to 30 seconds/bin, but this can changed using ```--Tbinning``` switch. Energy range is defaulted to 32 000 bins spread from 0 to 8 000keV, but can be changed using the ```--Ebinning``` switch.
 
@@ -20,7 +20,9 @@ Time range of the matrices is plotted in minutes and is deduced from the first a
 
 ## Solving the time evolution
 
-The ```solveTimeEvo_AGATA.cpp``` is a driver code for the ```libccm``` library made to fix the apparent change of energy in time. See the ```--help``` switch of the ```solveTimeEvo``` executable to see all possible options available. The CCM offers a few parameters that can influence level of improvement you can achieve, for details see top level readme. Code can be run in 2 modes:
+The ```solveTimeEvo_AGATA.cpp``` is a driver code for the ```libccm``` library made to fix the apparent change of energy in time. See the ```--help``` switch of the ```solveTimeEvo``` executable to see all possible options available. In order to run the code, it is advised to be in the ```Replay``` directory with runs named as ```run_XXXX```, as per AGATA standard. After completion, the output diagnostics and final `TimeEvoCC.conf` configuration files are stored in the ```timeEvo/``` directory. The final parameters can be simply copied to the main directory, as the are already in the correct folder structure `run_XXXX/Conf/CRY/TimeEvoCC.conf`.
+
+The CCM offers a few parameters that can influence level of improvement you can achieve, for details see top level readme. Code can be run in 2 modes:
 - With ```--super_settings``` flag; only a single hard-coded set of parameters is used. Very fast but probably no the best result you can achieve.
 - Without the flag above, code will run all possible combinations of hard-coded parameters. For this option to work, you need to specify the ```--fit_peak [1] [2] [3]``` to obtain a figure of merit of the applied corrections. Specifically, the FWFM of the specified peak is used. A peak that is NOT in the ROI should be used to avoid over-fitting. This executable takes significantly longer to run, but at least you get a print out as it moves along, which is nice. Parameters reaching best FoM are used to generate the file with final corrections, no true minimization is performed, as I still haven't found a minimizer that can work with discrete values/options. 
 

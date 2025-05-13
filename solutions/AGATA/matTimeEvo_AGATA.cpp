@@ -74,8 +74,11 @@ int CoresTimeEvo(int                 runNr,
 {
 
     string inFilePattern = "run_" + fourCharInt(runNr) + "/Out/Analysis" + "/Tree_";
-    string outDirName    = "run_" + fourCharInt(runNr) + "/TimeEvo";
+    // string outDirName    = "run_" + fourCharInt(runNr) + "/TimeEvo";
+    string outDirName = "timeEvo";
     if (!outDir.empty()) outDirName = outDir;
+    if (outDirName.back() == '/') outDirName.pop_back();
+
     createDirectoryIfNotExists(outDirName);
 
     std::vector<Int_t> crystalIds;
@@ -160,7 +163,7 @@ int CoresTimeEvo(int                 runNr,
     for (const auto &cry : crystals)
     {
         string outFileName =
-            outDirName + "/out_" + fourCharInt(runNr) + "_" + cry + ".root";
+            outDirName + "/temat_" + fourCharInt(runNr) + "_" + cry + ".root";
         root_files.emplace_back(std::make_shared<TFile>(outFileName.c_str(), "recreate"));
 
         timeEvoMatrices.emplace_back(std::make_shared<TH2F>(
