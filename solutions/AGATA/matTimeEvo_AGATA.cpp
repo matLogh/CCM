@@ -243,7 +243,7 @@ void printHelp()
               << "                                <2> min energy (default 0) \n"
               << "                                <3> max energy (default 8 000)\n";
     std::cout << "  --outdir [string]   Specify output directory (default: "
-                 "run_<run>/TimeEvo)\n";
+                 "TimeEvo/)\n";
 }
 
 void parseArguments(int                       argc,
@@ -306,16 +306,17 @@ void parseArguments(int                       argc,
                 {
                     std::cerr << "Crystal " << argv[i + 1]
                               << " already specified. Skipping." << std::endl;
+                    continue;
                 }
             }
         }
         else if (arg == "--allcrys")
         {
             std::vector<std::string> _c = {
-                "00A", "00B", "00C", "01A", "01C", "02A", "02B", "02C", "04A",
-                "04B", "04C", "05B", "05C", "06A", "06B", "06C", "07A", "07B",
-                "08A", "08B", "09A", "09B", "09C", "10A", "10B", "10C", "11A",
-                "11B", "11C", "12A", "12B", "12C", "14A", "14B", "14C"};
+                "00A", "00B", "00C", "01A", "01C", "02A", "02B", "02C",
+                "04A", "04B", "04C", "05B", "05C", "06A", "06B", "06C",
+                "07A", "07B", "08A", "08B", "09A", "09B", "09C", "10A",
+                "10B", "10C", "11A", "11B", "11C", "14A", "14B", "14C"};
             for (const auto &cry : _c)
             {
                 if (std::find(crystals.begin(), crystals.end(), cry) == crystals.end())

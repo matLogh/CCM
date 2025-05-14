@@ -2,7 +2,7 @@
 
 # Define arrays
 run_list=(1003 1008 1010 1011 1012 1013 1014 1015 1016 1017 1 2 3 5 6 7 8 1018 1019 1020 1021 1023)
-crystal_list=("00A" "00B" "00C" "01A" "01C" "02A" "02B" "02C" "04A" "04B" "04C" "05B" "05C" "06A" "06B" "06C" "07A" "07B" "08A" "08B" "09A" "09B" "09C" "10A" "10B" "10C" "11A" "11B" "11C" "12A" "12B" "12C" "14A" "14B" "14C")
+crystal_list=("00A" "00B" "00C" "01A" "01C" "02A" "02B" "02C" "04A" "04B" "04C" "05B" "05C" "06A" "06B" "06C" "07A" "07B" "08A" "08B" "09A" "09B" "09C" "10A" "10B" "10C" "11A" "11B" "11C" "14A" "14B" "14C")
 
 # Array to store failed runs and crystals
 declare -a failed_runs_and_crystals
