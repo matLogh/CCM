@@ -568,7 +568,7 @@ void print_help()
 
     std::cout
         << "  --ROIsource <1>            Define ROI for calibration sources. Currently "
-           "recognized are: 60Co \n";
+           "recognized are: 60Co, 66Ga, 133Ba, 226Ra \n";
     std::cout << "  --ref_time <1> <2>         Specify the reference time "
                  "interval \n";
     std::cout << "  --fit_peak <1> <2> <3>     If running in minimization "
@@ -634,17 +634,25 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
         ROI      = {1332.492, 1300., 1370., -50, 50}; // Example values for 60Co
         fit_peak = {1173.228, 1165., 1185.};
     }
+    else if (source == "133ba" || "ba133")
+    {
+        ROI      = {356.012, 340., 370., -10, 10};
+        fit_peak = {302.85, 290., 310.};
+    }
     else if (source == "152eu" || "eu152")
     {
         throw std::runtime_error("152Eu source is not implemented yet");
     }
     else if (source == "226ra" || "ra226")
     {
-        throw std::runtime_error("226Ra source is not implemented yet");
+        // decay of 214Bi
+        ROI      = {1764.491, 1720, 1780, -50, 50};
+        fit_peak = {2204.1, 2150., 2250.};
     }
     else if (source == "66ga" || "ga66")
     {
-        throw std::runtime_error("66Ga source is not implemented yet");
+        ROI      = {2751.835, 2700., 2800., -50, 50};
+        fit_peak = {4295.187, 4220., 4360.};
     }
     else if (source == "56co" || "co56")
     {
