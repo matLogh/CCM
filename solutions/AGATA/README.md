@@ -22,9 +22,16 @@ Time range of the matrices is plotted in minutes and is deduced from the first a
 
 The ```solveTimeEvo_AGATA.cpp``` is a driver code for the ```libccm``` library made to fix the apparent change of energy in time. See the ```--help``` switch of the ```solveTimeEvo``` executable to see all possible options available. In order to run the code, it is advised to be in the ```Replay``` directory with runs named as ```run_XXXX```, as per AGATA standard. After completion, the output diagnostics and final `TimeEvoCC.conf` configuration files are stored in the ```timeEvo/``` directory. The final parameters can be simply copied to the main directory, as the are already in the correct folder structure `run_XXXX/Conf/CRY/TimeEvoCC.conf`.
 
-The CCM offers a few parameters that can influence level of improvement you can achieve, for details see top level readme. Code can be run in 2 modes:
-- With ```--super_settings``` flag; only a single hard-coded set of parameters is used. Very fast but probably no the best result you can achieve.
-- Without the flag above, code will run all possible combinations of hard-coded parameters. For this option to work, you need to specify the ```--fit_peak [1] [2] [3]``` to obtain a figure of merit of the applied corrections. Specifically, the FWFM of the specified peak is used. A peak that is NOT in the ROI should be used to avoid over-fitting. This executable takes significantly longer to run, but at least you get a print out as it moves along, which is nice. Parameters reaching best FoM are used to generate the file with final corrections, no true minimization is performed, as I still haven't found a minimizer that can work with discrete values/options. 
+The CCM offers a few parameters that can influence level of improvement you can achieve, namely:
+- rebining of both time and energy dimensions of the input time-energy matrix (TEMAT),
+- use polynomial or gaussian fit of the dot product distribution,
+- use of interpolators and their different types
+- use of smoothers and their different types and input parameters.
 
-Code is running only 1 crystal at the time, because it needs to create a lot of copies of the input matrix that can be quite memory-heavy. To multithread the code for more crystals I recommend running the code with fork in bash, multithreading it in C++ is not possible due to ROOT using thread-unsafe minimizers.  
+For more details see top level readme. Code can be run in 2 main modes:
+- With ```--super_settings``` flag; only a single hard-coded set of above mentioned parameters is used. Very fast but probably no the best result you can achieve (but it won't be far away from it!).
+- Without specifying the flag above, code will run multiple combinations of hard-coded parameters and will try to identify the best ones. For this option to work, you need to specify the ```--fit_peak <1> <2> <3>``` to obtain a figure of merit for different set of parameters. Specifically, the FWFM of the specified peak is used. A peak that is NOT in the ROI should be used to avoid over-fitting. This executable takes significantly longer to run, but at least you get a print out as it moves along, which is nice. Parameters reaching best FoM are used to generate the file with final corrections, no true minimization is performed, as I still haven't found a minimizer that can work with discrete values/options. 
+- Option ```--chain_runs <1> <...>``` is useful if you want to use same parameters for multiple runs. This option will first run grid optimizer on the run defined on the *primary run* defined by ```--run```. Once optimal parameters for CCM are found, 
+
+Code is running only 1 crystal at the time, because it needs to create a lot of copies of the input matrix that can be quite memory-heavy. To multithread the code for more crystals I recommend running the code with fork in bash, multithreading it in C++ is not efficient due to ROOT using thread-unsafe minimizers.  
 

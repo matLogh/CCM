@@ -287,7 +287,7 @@ void parseArguments(int                       argc,
             if (i + 1 < argc) { maxEntries = std::stol(argv[++i]); }
             else { throw std::invalid_argument("Missing value for --maxentries"); }
         }
-        else if (arg == "--crys")
+        else if (arg == "--crys" || arg == "--crystal" || arg == "--crystals")
         {
             while (i + 1 < argc && std::string(argv[i + 1]).size() == 3)
             {

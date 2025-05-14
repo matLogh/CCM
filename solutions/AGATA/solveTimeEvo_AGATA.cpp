@@ -63,7 +63,7 @@ std::vector<float> gREFERENCE_TIME;
 std::vector<float> gFIT_PEAK;
 bool               gUSE_SUPER_SETTINGS{false};
 std::string        gROOTFILE      = "";
-std::string        gDIR           = "";
+std::string        gDIR           = "timeEvo";
 std::string        gMATRIX_NAME   = "";
 int                gREFERENCE_RUN = -1;
 std::vector<float> gREFERENCE_VECTOR;
@@ -672,7 +672,7 @@ std::string get_conffilename(int run, std::string crystal)
 
 std::string get_rootfilename(int run, std::string crystal)
 {
-    return gDIR + "/timeEvo/temat_" + fourCharInt(gRUN) + "_" + gCRYSTAL + ".root";
+    return gDIR + "/temat_" + fourCharInt(gRUN) + "_" + gCRYSTAL + ".root";
 }
 
 void set_reference_vector(const int ref_run, const int run)
