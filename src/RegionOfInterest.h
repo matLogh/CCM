@@ -109,6 +109,8 @@ class RegionOfInterest
     ~RegionOfInterest() = default;
 
     void Print() const noexcept;
+
+    RegionOfInterest Clone(const std::shared_ptr<TH2> matrix) const noexcept;
 };
 
 } // End of namespace TEC

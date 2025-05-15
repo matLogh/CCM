@@ -53,3 +53,11 @@ void TEC::RegionOfInterest::Print() const noexcept
     std::cout << "displacement_steps: " << displacement_steps << '\n';
     std::cout << "base_shift_value: " << base_shift_value << '\n';
 }
+
+TEC::RegionOfInterest TEC::RegionOfInterest::Clone(
+    const std::shared_ptr<TH2> matrix) const noexcept
+{
+    return RegionOfInterest(matrix, this->energy_window_low, this->energy_window_high,
+                            this->energy_displacement_low, this->energy_displacement_high,
+                            this->desired_energy);
+}
