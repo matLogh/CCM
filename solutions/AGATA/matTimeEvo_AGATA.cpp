@@ -10,42 +10,11 @@
 #include <string>
 #include <vector>
 
+#include "common.cpp"
+
 using namespace std;
 
 std::vector<double> gENERGY_BINING{};
-
-string fourCharInt(int I)
-{
-    stringstream ID;
-    ID << setfill('0') << setw(4) << I;
-    return ID.str();
-}
-
-int get_crystal_id(const std::string &input)
-{
-    if (input.size() != 3 || !isdigit(input[0]) || !isdigit(input[1]) ||
-        !isalpha(input[2]))
-    {
-        throw std::invalid_argument(
-            "Input must be a 3-character string with 2 digits followed by a letter.");
-    }
-
-    int number =
-        (input[0] - '0') * 10 +
-        (input[1] - '0'); // Combine the first two characters into a single integer
-    char letter = std::toupper(input[2]); // Extract the third character as the letter
-
-    int retval = number * 3;
-    switch (letter)
-    {
-    case 'A': retval += 0; break;
-    case 'B': retval += 1; break;
-    case 'C': retval += 2; break;
-    default: throw std::invalid_argument("Invalid letter. Only A, B, or C are allowed.");
-    }
-
-    return retval;
-}
 
 #include <filesystem>
 #include <iostream>
@@ -289,24 +258,13 @@ void parseArguments(int                       argc,
         }
         else if (arg == "--crys" || arg == "--crystal" || arg == "--crystals")
         {
-            while (i + 1 < argc && std::string(argv[i + 1]).size() == 3)
+            auto _crys = parse_space_separated_crystals(i, argc, argv);
+            // avoid duplicates
+            for (const auto &cry : _crys)
             {
-                std::string cry = argv[i + 1];
-                if (!(cry.size() == 3 && std::isdigit(cry[0]) && std::isdigit(cry[1]) &&
-                      (cry[2] == 'A' || cry[2] == 'B' || cry[2] == 'C')))
+                if (std::find(crystals.begin(), crystals.end(), cry) == crystals.end())
                 {
-                    break;
-                }
-                if (std::find(crystals.begin(), crystals.end(), argv[i + 1]) ==
-                    crystals.end())
-                {
-                    crystals.emplace_back(argv[++i]);
-                }
-                else
-                {
-                    std::cerr << "Crystal " << argv[i + 1]
-                              << " already specified. Skipping." << std::endl;
-                    continue;
+                    crystals.emplace_back(cry);
                 }
             }
         }

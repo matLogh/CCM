@@ -27,6 +27,8 @@
 #include "variables.h"
 #include <thread>
 
+#include "common.cpp"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wall"
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -70,79 +72,6 @@ std::vector<float> gREFERENCE_VECTOR;
 std::vector<int>   gCHAIN_RUNS;
 
 const double MINUTES_TO_TIMESTAMPS = 6.0e9;
-
-std::string fourCharInt(int I)
-{
-    std::stringstream ID;
-    ID << std::setfill('0') << std::setw(4) << I;
-    return ID.str();
-}
-
-bool can_create_file(const std::string &path)
-{
-    try
-    {
-        // Extract the directory from the path
-        std::filesystem::path file_path(path);
-        std::filesystem::path dir_path = file_path.parent_path();
-
-        // Check if the directory exists
-        if (!dir_path.empty() && !std::filesystem::exists(dir_path))
-        {
-            if (!std::filesystem::create_directories(dir_path))
-            {
-                std::cerr << "Error: Unable to create directory: " << dir_path
-                          << std::endl;
-                return false;
-            }
-        }
-
-        // Try to create and write to the file
-        std::ofstream file(path);
-        if (!file.is_open())
-        {
-            std::cerr << "Error: Unable to create file at " << path << std::endl;
-            return false;
-        }
-
-        // Close the file and delete it (cleanup)
-        file.close();
-        std::filesystem::remove(path);
-
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "Exception: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-int get_crystal_id(const std::string &input)
-{
-    if (input.size() != 3 || !isdigit(input[0]) || !isdigit(input[1]) ||
-        !isalpha(input[2]))
-    {
-        throw std::invalid_argument(
-            "Input must be a 3-character string with 2 digits followed by a letter.");
-    }
-
-    int number =
-        (input[0] - '0') * 10 +
-        (input[1] - '0'); // Combine the first two characters into a single integer
-    char letter = std::toupper(input[2]); // Extract the third character as the letter
-
-    int retval = number * 3;
-    switch (letter)
-    {
-    case 'A': retval += 0; break;
-    case 'B': retval += 1; break;
-    case 'C': retval += 2; break;
-    default: throw std::invalid_argument("Invalid letter. Only A, B, or C are allowed.");
-    }
-
-    return retval;
-}
 
 void write_timeevo_agata_file(std::shared_ptr<CCM> corrections,
                               const std::string    fname             = "TimeEvoCC.conf",
@@ -258,20 +187,6 @@ double get_fwfm(TH1 *histo, const double center, const double min, const double 
     fitter.AddPeak(center, true, false, false);
     fitter.Fit(histo, "OUTPUT_NONE");
     return fitter.GetPeak(0)->GetFWxM(5);
-}
-
-std::string get_pointer_string(void *address)
-{
-    std::ostringstream oss;
-    oss << address;
-    return oss.str();
-}
-
-double fitfcn(double *x, double *par)
-{
-    // par[0] = gain
-    // par[1] = offset
-    return par[0] * x[0];
 }
 
 void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
@@ -392,7 +307,6 @@ std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2> origina
     // ojbect
     std::string addressStr = "gain_fcn_" + get_pointer_string(ccm_fix.get());
     TF1         fcn("gain_fcn", "[0]*x", 0, 32000);
-    // TF1 fcn(addressStr.c_str(), fitfcn, 0, 32000, 1);
 
     ccm_fix->SetCorrectionFunction(fcn, "");
     ccm_fix->CalculateEnergyShifts(1);
@@ -601,93 +515,11 @@ void print_help()
     std::cout << std::endl << std::endl;
 }
 
-// Helper function to parse space-separated floats
-std::vector<float> parse_space_separated_floats(int &i, int argc, char **argv, int count)
-{
-    std::vector<float> result;
-    for (int j = 0; j < count; ++j)
-    {
-        if (i + 1 < argc)
-        {
-            try
-            {
-                result.push_back(std::stof(argv[++i]));
-            }
-            catch (const std::invalid_argument &)
-            {
-                throw std::runtime_error("Invalid float value: " + std::string(argv[i]));
-            }
-        }
-        else { throw std::runtime_error("Missing float value for parameter"); }
-    }
-    return result;
-}
-
-void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &fit_peak)
-{
-    std::string source = argv;
-    std::transform(source.begin(), source.end(), source.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-
-    if (source == "60co" || "co60")
-    {
-        ROI      = {1332.492, 1300., 1370., -50, 50}; // Example values for 60Co
-        fit_peak = {1173.228, 1165., 1185.};
-    }
-    else if (source == "133ba" || "ba133")
-    {
-        ROI      = {356.012, 340., 370., -10, 10};
-        fit_peak = {302.85, 290., 310.};
-    }
-    else if (source == "152eu" || "eu152")
-    {
-        throw std::runtime_error("152Eu source is not implemented yet");
-    }
-    else if (source == "226ra" || "ra226")
-    {
-        // decay of 214Bi
-        ROI      = {1764.491, 1720, 1780, -50, 50};
-        fit_peak = {2204.1, 2150., 2250.};
-    }
-    else if (source == "66ga" || "ga66")
-    {
-        ROI      = {2751.835, 2700., 2800., -50, 50};
-        fit_peak = {4295.187, 4220., 4360.};
-    }
-    else if (source == "56co" || "co56")
-    {
-        throw std::runtime_error("56Co source is not implemented yet");
-    }
-    else if (source == "na22" || "22na")
-    {
-        throw std::runtime_error("Na-22 source is not implemented yet");
-    }
-    else if (source == "cs137" || "137cs")
-    {
-        throw std::runtime_error("Na-22 source is not implemented yet");
-    }
-    else { throw std::runtime_error("Unknown source: " + source); }
-}
-
-std::string get_conffilename(int run, std::string crystal)
-{
-    std::string conffile =
-        gDIR + "/" + "run_" + fourCharInt(run) + "/Conf/" + crystal + "/TimeEvoCC.conf";
-    if (!can_create_file(conffile))
-        throw std::runtime_error("Problem with creating output configuration file\n");
-    return conffile;
-}
-
-std::string get_rootfilename(int run, std::string crystal)
-{
-    return gDIR + "/temat_" + fourCharInt(gRUN) + "_" + gCRYSTAL + ".root";
-}
-
 void set_reference_vector(const int ref_run, const int run)
 {
     // std::string reference_root_file = "Out/run_" + fourCharInt(ref_run) + "/out_" +
     //                                   fourCharInt(ref_run) + "_" + gCRYSTAL + ".root";
-    std::string reference_root_file = get_rootfilename(ref_run, gCRYSTAL);
+    std::string reference_root_file = get_rootfilename(gDIR, ref_run, gCRYSTAL);
 
     TFile *matfile = TFile::Open(reference_root_file.c_str(), "READ");
     if (!matfile || matfile->IsZombie())
@@ -863,7 +695,7 @@ void parse_args(int argc, char **argv)
     if (gMATRIX_NAME.empty()) { gMATRIX_NAME = "hE0_TS_" + gCRYSTAL; }
 
     // set
-    if (gROOTFILE.empty()) { gROOTFILE = get_rootfilename(gRUN, gCRYSTAL); }
+    if (gROOTFILE.empty()) { gROOTFILE = get_rootfilename(gDIR, gRUN, gCRYSTAL); }
 
     // Print all parsed input parameters
     std::cout << "Parsed Input Parameters:" << std::endl;
@@ -884,7 +716,7 @@ void parse_args(int argc, char **argv)
     std::cout << "  Use Super Settings: " << std::boolalpha << gUSE_SUPER_SETTINGS
               << std::endl;
     std::cout << "Output configuration file will be saved to: "
-              << get_conffilename(gRUN, gCRYSTAL) << std::endl;
+              << get_conffilename(gDIR, gRUN, gCRYSTAL) << std::endl;
 }
 
 void run_chained_runs(const ccm_settings &optimal_settings)
@@ -898,7 +730,7 @@ void run_chained_runs(const ccm_settings &optimal_settings)
         // std::string c_rootfile = "run_" + fourCharInt(c_run) + "/Out/TimeEvo/out_" +
         //                          fourCharInt(c_run) + "_" + gCRYSTAL + ".root";
 
-        std::string c_rootfile = get_rootfilename(c_run, gCRYSTAL);
+        std::string c_rootfile = get_rootfilename(gDIR, c_run, gCRYSTAL);
 
         TFile *matfile = TFile::Open(c_rootfile.c_str(), "READ");
         if (!matfile || matfile->IsZombie())
@@ -915,7 +747,7 @@ void run_chained_runs(const ccm_settings &optimal_settings)
         }
 
         // set conf path for output file
-        std::string conf_filename = get_conffilename(c_run, gCRYSTAL);
+        std::string conf_filename = get_conffilename(gDIR, c_run, gCRYSTAL);
         gRUN                      = c_run;
         std::cout << std::endl << "Running chained run: " << c_run << std::endl;
         run_ccm_super_settings(TEMAT_original, optimal_settings, conf_filename);
@@ -955,7 +787,7 @@ int main(int argc, char **argv)
         gSUPER_SETTINGS.cost                   = std::numeric_limits<double>::quiet_NaN();
 
         run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS,
-                               get_conffilename(gRUN, gCRYSTAL));
+                               get_conffilename(gDIR, gRUN, gCRYSTAL));
         run_chained_runs(gSUPER_SETTINGS);
         return 0;
     }
@@ -992,7 +824,7 @@ int main(int argc, char **argv)
 
     gSUPER_SETTINGS = result.front();
     run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS,
-                           get_conffilename(gRUN, gCRYSTAL));
+                           get_conffilename(gDIR, gRUN, gCRYSTAL));
     run_chained_runs(gSUPER_SETTINGS);
 
     return 0;
