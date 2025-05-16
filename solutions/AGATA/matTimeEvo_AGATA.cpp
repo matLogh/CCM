@@ -39,10 +39,15 @@ int CoresTimeEvo(int                 runNr,
                  std::vector<string> crystals,
                  int                 seconds_per_bin,
                  ULong64_t           maxEntries = 0,
-                 std::string         outDir     = "")
+                 std::string         outDir     = "",
+                 std::string         replayDir  = "")
 {
 
-    string inFilePattern = "run_" + fourCharInt(runNr) + "/Out/Analysis" + "/Tree_";
+    string inFilePattern;
+    if (replayDir.empty())
+        inFilePattern = "run_" + fourCharInt(runNr) + "/Out/Analysis" + "/Tree_";
+    else
+        inFilePattern = replayDir + "/Tree_";
     // string outDirName    = "run_" + fourCharInt(runNr) + "/TimeEvo";
     string outDirName = "timeEvo";
     if (!outDir.empty()) outDirName = outDir;
@@ -211,8 +216,12 @@ void printHelp()
               << "                                <1> number of bins (default 32 000)\n"
               << "                                <2> min energy (default 0) \n"
               << "                                <3> max energy (default 8 000)\n";
-    std::cout << "  --outdir [string]   Specify output directory (default: "
+    std::cout << "  --outdir <string>       Specify output directory (default: "
                  "TimeEvo/)\n";
+    std::cout << "  --replaydir <string>    Specify replay directory that contain ROOT "
+                 "trees, default is run_XXXX/Out/Analysis \n";
+
+    std::cout << std::endl << std::endl;
 }
 
 void parseArguments(int                       argc,
@@ -221,8 +230,10 @@ void parseArguments(int                       argc,
                     int                      &run,
                     Long64_t                 &maxEntries,
                     std::vector<std::string> &crystals,
-                    std::string              &outDir)
+                    std::string              &outDir,
+                    std::string              &replayDir)
 {
+    replayDir = "";
     for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
@@ -288,6 +299,12 @@ void parseArguments(int                       argc,
             if (i + 1 < argc) { outDir = argv[++i]; }
             else { throw std::invalid_argument("Missing value for --outdir"); }
         }
+        else if (arg == "--replaydir")
+        {
+            if (i + 1 < argc) { replayDir = argv[++i]; }
+            else { throw std::invalid_argument("Missing value for --replaydir"); }
+            if (replayDir.back() == '/') { replayDir.pop_back(); }
+        }
         else
         {
             printHelp();
@@ -311,15 +328,17 @@ int main(int argc, char **argv)
     std::vector<std::string> crystals;
     int                      number_of_seconds_per_bin = 30;
     std::string              outDir{};
+    std::string              replayDir{};
 
     parseArguments(argc, argv, number_of_seconds_per_bin, run, maxentries, crystals,
-                   outDir);
+                   outDir, replayDir);
 
     std::cout << "Parameters used are:" << std::endl;
     std::cout << "Run number:       " << run << std::endl;
     std::cout << "Seconds per bin:  " << number_of_seconds_per_bin << std::endl;
     std::cout << "Max entries:      " << maxentries << std::endl;
     std::cout << "Output directory: " << outDir << std::endl;
+    std::cout << "Replay directory: " << replayDir << std::endl;
 
     for (const auto &cry : crystals) { std::cout << "   crystal: " << cry << std::endl; }
 
@@ -333,5 +352,6 @@ int main(int argc, char **argv)
         std::cerr << "No run number specified. Use --run option." << std::endl;
         return 1;
     }
-    return CoresTimeEvo(run, crystals, number_of_seconds_per_bin, maxentries, outDir);
+    return CoresTimeEvo(run, crystals, number_of_seconds_per_bin, maxentries, outDir,
+                        replayDir);
 }
