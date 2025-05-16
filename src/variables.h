@@ -35,15 +35,15 @@ struct VarManager
 // definition of result container
 struct ResCont
 {
-    bool                isValid{true};
-    double              bin_shift{0.};
-    double              energy_shift{0.};
-    double              dp{0.};
-    double              poly_shift{0.};
-    double              gfit_sigma{0.};
-    double              gfit_mu{0.};
-    double              gfit_chi2{0.};
-    std::vector<double> dp_vec;
+    bool               isValid{true};
+    double             bin_shift{0.};
+    double             energy_shift{0.};
+    double             dp{0.};
+    double             poly_shift{0.};
+    double             gfit_sigma{0.};
+    double             gfit_mu{0.};
+    double             gfit_chi2{0.};
+    std::vector<float> dp_vec;
 
     void print()
     {

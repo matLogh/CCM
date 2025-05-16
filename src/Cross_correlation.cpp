@@ -80,13 +80,15 @@ void TEC::CrossCorrel::ROIAnalysis(const int   ROI_index,
     // vector of dot products
     dp_vec.resize((size_t)V->ROIs[(uint)ROI_index].displacement_steps);
     // temporary vector holding current data
-    std::vector<float> temp_data;
+    std::vector<float> temp_data(V->ROIs[(uint)ROI_index].vector_dimension);
     // cycle through through the whole region, calculate cross correlation
     for (int shift = 0; shift < V->ROIs[(uint)ROI_index].displacement_steps; shift++)
     {
-        temp_data = std::vector<float>(
-            &data_vec[shift],
-            &data_vec[shift + V->ROIs[(uint)ROI_index].vector_dimension]);
+        std::memcpy(temp_data.data(), &data_vec[shift],
+                    V->ROIs[(uint)ROI_index].vector_dimension * sizeof(float));
+        // temp_data = std::vector<float>(
+        //     &data_vec[shift],
+        //     &data_vec[shift + V->ROIs[(uint)ROI_index].vector_dimension]);
 
         if (Normalize(temp_data) == 0) // 0 == its OK
             dp_vec[shift] = DotProduct(temp_data, V->sample_vector[(uint)ROI_index]);
@@ -112,7 +114,7 @@ retval:
 int TEC::CrossCorrel::Normalize(std::vector<float> &v)
 {
     norm = 0;
-    for (uint i = 0; i < v.size(); i++) { norm = norm + (v[i] * v[i]); }
+    for (uint i = 0; i < v.size(); i++) { norm += (v[i] * v[i]); }
     if (norm == 0) { return -1; }
 
     norm = 1. / (double)sqrt(norm);
@@ -120,14 +122,15 @@ int TEC::CrossCorrel::Normalize(std::vector<float> &v)
     return 0;
 }
 
-double TEC::CrossCorrel::DotProduct(std::vector<float> &v1, std::vector<float> &v2)
+double TEC::CrossCorrel::DotProduct(const std::vector<float> &v1,
+                                    const std::vector<float> &v2)
 {
     dp = 0;
     if (v1.size() != v2.size())
     {
         std::cerr << "WRONG VECTOR SIZE" << std::endl;
         throw 3;
-        return -999;
+        exit(3);
     }
     for (uint i = 0; i < v1.size(); i++) { dp += v1[i] * v2[i]; }
     return dp;
@@ -278,6 +281,7 @@ void TEC::CrossCorrel::GetShift_Gaussian(double &rchi2, double &sigma, double &m
     // param:   3 - bcg offset
     // param:   4 - bcg gain/linear
     TF1 fcn("gauss_with_background", TEC::gaussianWithBackGround, low, high, 5);
+    fcn.SetNpx(1000);
     fcn.SetParLimits(0, 0., 1.);
     fcn.SetParameter(0, 0.2);
     fcn.SetParLimits(1, low, high);

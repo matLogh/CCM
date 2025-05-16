@@ -143,7 +143,7 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
 
     if (source == "60co" || "co60")
     {
-        ROI      = {1332.492, 1300., 1370., -50, 50}; // Example values for 60Co
+        ROI      = {1332.492, 1300., 1370., -20, 20}; // Example values for 60Co
         fit_peak = {1173.228, 1165., 1185.};
     }
     else if (source == "133ba" || "ba133")
@@ -158,12 +158,12 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
     else if (source == "226ra" || "ra226")
     {
         // decay of 214Bi
-        ROI      = {1764.491, 1720, 1780, -50, 50};
+        ROI      = {1764.491, 1720, 1780, -20, 20};
         fit_peak = {2204.1, 2150., 2250.};
     }
     else if (source == "66ga" || "ga66")
     {
-        ROI      = {2751.835, 2700., 2800., -50, 50};
+        ROI      = {2751.835, 2700., 2800., -20, 20};
         fit_peak = {4295.187, 4220., 4360.};
     }
     else if (source == "56co" || "co56")

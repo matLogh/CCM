@@ -52,8 +52,8 @@ using namespace TEC;
 #include <vector>
 
 // global parameters used in grid search
-const std::vector<int>    gRebinX{1, 2, 5, 10};
-const std::vector<int>    gRebinY{1, 2, 5, 10};
+const std::vector<int>    gRebinX{1, 2, 4};
+const std::vector<int>    gRebinY{1, 2, 4, 8};
 const std::vector<double> gSmooth_param_lowess{.2, .4, .6, .8, 1.0};
 const std::vector<double> gSmooth_param_others{1, 5, 10, 20, 50, 100, 200};
 
@@ -274,7 +274,7 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
             }
             diagnostic_file.cd();
 
-            settings.print_values(std::cout);
+            // settings.print_values(std::cout);
             auto TEMAT_fixed = ccm_fix->FixMatrix(TEMAT.get());
 
             std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
@@ -423,12 +423,10 @@ std::vector<ccm_settings> ccm_optimizer_global(
     s.valid_only = true;
     // rebinX loop
     for (const int rebinX : gRebinX)
-    // for (const int rebinX : {1,10})
     {
         s.temat_rebin_x = rebinX;
         // rebinY loop
         for (const int rebinY : gRebinY)
-        // for (const int rebinY : {10})
         {
             s.temat_rebin_y = rebinY;
 
@@ -776,19 +774,20 @@ int main(int argc, char **argv)
 
     if (gUSE_SUPER_SETTINGS)
     {
-        gSUPER_SETTINGS.temat_rebin_x          = 1;
-        gSUPER_SETTINGS.temat_rebin_y          = 1;
-        gSUPER_SETTINGS.use_gaussian           = false;
-        gSUPER_SETTINGS.valid_only             = true;
-        gSUPER_SETTINGS.interpolator_type      = "akima";
-        gSUPER_SETTINGS.interpolator_smoothing = true;
-        gSUPER_SETTINGS.smoother_type          = TEC::SmootherType::KERNEL;
-        gSUPER_SETTINGS.smoother_par           = 20;
+        gSUPER_SETTINGS.temat_rebin_x = 2;
+        gSUPER_SETTINGS.temat_rebin_y = 2;
+        gSUPER_SETTINGS.use_gaussian  = true;
+        gSUPER_SETTINGS.valid_only    = true;
+        // gSUPER_SETTINGS.interpolator_type      = "akima";
+        gSUPER_SETTINGS.interpolator_type      = "";
+        gSUPER_SETTINGS.interpolator_smoothing = false;
+        gSUPER_SETTINGS.smoother_type          = TEC::SmootherType::NONE;
+        gSUPER_SETTINGS.smoother_par           = -1;
         gSUPER_SETTINGS.cost                   = std::numeric_limits<double>::quiet_NaN();
 
         run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS,
                                get_conffilename(gDIR, gRUN, gCRYSTAL));
-        run_chained_runs(gSUPER_SETTINGS);
+        if (gREFERENCE_RUN != -1) { run_chained_runs(gSUPER_SETTINGS); }
         return 0;
     }
 

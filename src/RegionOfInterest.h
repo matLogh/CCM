@@ -35,9 +35,9 @@ class RegionOfInterest
     int bin_window_low;
     /// @brief  bin_window_high: bin number of the energy_window_high
     int bin_window_high;
-    /// @brief how many bins below window_low are we moving
+    /// @brief how many bins below window_low are we shifting
     int bin_displacement_low;
-    /// @brief how many bins above window_high are we moving
+    /// @brief how many bins above window_high are we shifting
     int bin_displacement_high;
 
     /// @brief dimension of vectors that is used for cross-correlation

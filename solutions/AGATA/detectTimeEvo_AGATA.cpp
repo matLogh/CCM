@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+#include <TApplication.h>
+#include <TCanvas.h>
+#include <TF1.h>
 #include <TFile.h>
 #include <TH2.h>
 
@@ -18,7 +21,6 @@ std::vector<std::string> gCRYSTALLIST;
 std::string              gDIR            = "timeEvo";
 float                    gSHIFTTHRESHOLD = 0.5; // keV
 std::vector<float>       gROIarr;
-std::string              gMATRIX_NAME;
 
 std::array<float, 2> get_ref_time(std::shared_ptr<TH2> TEMAT)
 {
@@ -54,25 +56,16 @@ std::array<float, 2> get_ref_time(std::shared_ptr<TH2> TEMAT)
     return ref_time;
 }
 
-bool detect_time_evolution(const int          run,
-                           const std::string &crystal,
-                           int               &over_threshold_counter,
-                           float             &average_over_threshold_value)
+bool detect_time_evolution(std::shared_ptr<TH2> temat,
+                           int                 &over_threshold_counter,
+                           float               &average_over_threshold_value)
 {
-    auto  rfname = get_rootfilename(gDIR, run, crystal);
-    TFile matfile(rfname.c_str(), "READ");
-    if (matfile.IsZombie())
-    {
-        throw std::runtime_error("Error! could not open/find the ROOT file " + rfname +
-                                 " file");
-    }
-    std::shared_ptr<TH2> TEMAT((TH2 *)matfile.Get(gMATRIX_NAME.c_str()));
-
-    auto ref_time = get_ref_time(TEMAT);
+    std::shared_ptr<TH2> TEMAT(temat->Rebin2D(4, 4));
+    auto                 ref_time = get_ref_time(TEMAT);
     if (ref_time.at(0) < 0 || ref_time.at(1) < 0)
     {
         std::cerr << "Error! Could not find suitable reference time in the matrix "
-                  << rfname << std::endl;
+                  << TEMAT->GetName() << " in " << gDirectory->GetPath() << std::endl;
         return false;
     }
 
@@ -83,6 +76,10 @@ bool detect_time_evolution(const int          run,
     // Create a CCM object
     CCM ccm(TEMAT, rois, ref_time.at(0), ref_time.at(1));
     ccm.CalculateEnergyShifts(8);
+    // TF1 f("fcn", "[0]*x", 0, 34000);
+    // ccm.SetCorrectionFunction(f, "");
+    // ccm.CalculateCorrectionFits();
+    // auto TEMAT_fixed = ccm.FixMatrix();
 
     over_threshold_counter       = 0;
     average_over_threshold_value = 0.;
@@ -91,13 +88,26 @@ bool detect_time_evolution(const int          run,
         auto res = ccm.GetResultContainer(0, i);
         if (res->energy_shift > gSHIFTTHRESHOLD)
         {
+            std::cout << res->energy_shift << " " << res->bin_shift << " "
+                      << res->poly_shift << " " << res->gfit_mu << " " << res->gfit_sigma
+                      << std::endl;
             over_threshold_counter++;
-            average_over_threshold_value += res->energy_shift;
+            average_over_threshold_value += abs(res->energy_shift);
         }
     }
-    matfile.Close();
 
-    if (over_threshold_counter > 0) return true;
+    if (over_threshold_counter > 0)
+    {
+        std::cout << "counter: " << over_threshold_counter << std::endl;
+        TApplication app("app", nullptr, nullptr);
+        ccm.SaveShiftTable();
+        auto gr = ccm.GetROIShifts(0, false);
+        gr->Draw("ALP");
+        new TCanvas();
+        // TEMAT_fixed->Draw("COLZ");
+        app.Run();
+        return true;
+    }
     return false;
 }
 
@@ -110,7 +120,8 @@ void print_help()
     std::cout << "  --allcrys                  Run for all crystals of EXP_035\n";
     std::cout << "  --run <1> <...>            Specify the run number\n";
     std::cout << "  --shift_threshold <1>      Energy threshold, if energy shift value "
-                 "threshold is found the timeEvo is reported\n";
+                 "threshold is found the timeEvo is reported (default 0.5)\n";
+
     std::cout << "  --ROI <1> <2> <3> <4> <5>  Specify the Region of "
                  "Interest (ROI) as:\n"
               << "                                <1> - desired energy of "
@@ -130,12 +141,16 @@ void print_help()
 
     std::cout << "  --dir <1>                  Set directory in which to search for "
                  "matrices\n";
-    std::cout << "  --matrix <1>               Specify the matrix name \n";
     std::cout << std::endl << std::endl;
 }
 
 void parse_args(int argc, char **argv)
 {
+    if (argc < 2)
+    {
+        print_help();
+        throw std::invalid_argument("No arguments provided");
+    }
     for (int i = 1; i < argc; ++i)
     {
         // gCOST_PEAK
@@ -211,16 +226,33 @@ void parse_args(int argc, char **argv)
             }
             else { throw std::invalid_argument("Missing value for --shift_threshold"); }
         }
-        else if (arg == "--matrix" || arg == "--mat")
+        else if (arg == "--ROI")
         {
-            if (i + 1 < argc) { gMATRIX_NAME = argv[++i]; }
-            else { throw std::invalid_argument("Missing value for --matrix"); }
+            gROIarr = parse_space_separated_floats(i, argc, argv, 5);
+            if (gROIarr.size() != 5)
+            {
+                throw std::invalid_argument(
+                    "Invalid number of arguments for --ROI. Expected 5 values.");
+            }
         }
+        else if (arg == "--ROIsource")
+        {
+            std::vector<float> peak;
+            if (i + 1 < argc) { parse_ROI_source(argv[++i], gROIarr, peak); }
+            else { throw std::invalid_argument("Missing value for --ROIsource"); }
+        }
+
         else
         {
             print_help();
             throw std::invalid_argument("Unknown argument: " + arg);
         }
+    }
+    if (gROIarr.size() != 5)
+    {
+        throw std::invalid_argument(
+            "Invalid number of arguments for --ROI. Expected 5 values.");
+        exit(10);
     }
 }
 
@@ -232,7 +264,34 @@ int main(int argc, char **argv)
     {
         for (const auto &crystal : gCRYSTALLIST)
         {
-            // Add your processing logic here
+            auto  rfname = get_rootfilename(gDIR, run, crystal);
+            TFile matfile(rfname.c_str(), "READ");
+            if (matfile.IsZombie())
+            {
+                throw std::runtime_error("Error! could not open/find the ROOT file " +
+                                         rfname + " file");
+            }
+            std::string          matrix_name = "hE0_TS_" + crystal;
+            std::shared_ptr<TH2> TEMAT((TH2 *)matfile.Get(matrix_name.c_str()));
+
+            int   over_threshold_counter       = 0;
+            float average_over_threshold_value = 0.;
+            detect_time_evolution(TEMAT, over_threshold_counter,
+                                  average_over_threshold_value);
+            if (over_threshold_counter > 0)
+            {
+                std::cout << "Run: " << run << " Crystal: " << crystal
+                          << " Time evolution detected! "
+                          << "Over threshold counter: " << over_threshold_counter
+                          << " Average over threshold value: "
+                          << average_over_threshold_value / over_threshold_counter
+                          << std::endl;
+            }
+            else
+            {
+                std::cout << "Run: " << run << " Crystal: " << crystal
+                          << " No time evolution detected!" << std::endl;
+            }
         }
     }
 }

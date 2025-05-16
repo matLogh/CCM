@@ -171,9 +171,9 @@ void TEC::CCM::SetCorrectionFunction(const TF1 &fcn, const std::string &fit_opti
 
     TF1 *fclone = (TF1 *)fcn.Clone();
 
-    fclone->SetNpx(V.TEMAT->GetYaxis()->GetNbins() * 100);
     fclone->SetRange(V.TEMAT->GetYaxis()->GetBinLowEdge(1),
                      V.TEMAT->GetYaxis()->GetBinUpEdge(V.TEMAT->GetYaxis()->GetNbins()));
+    fclone->SetNpx(V.TEMAT->GetYaxis()->GetNbins() * 100);
     fclone->Update();
     fCorrectionFunctions.emplace_back(std::make_pair(fclone, fit_options + "NQ"));
 
@@ -283,15 +283,25 @@ void TEC::CCM::CreateReferenceVector(const uint   ROI_index,
 
 void TEC::CCM::Normalize(std::vector<float> &v)
 {
-    double norm = std::inner_product(v.begin(), v.end(), v.begin(), 0.0);
+    double norm = 0;
+    for (uint i = 0; i < v.size(); i++) { norm += (v[i] * v[i]); }
     if (norm <= 0)
     {
         throw std::runtime_error(
             "Normalization ERROR, sample vector cannot consist of zeros!");
     }
-    norm = sqrt(norm);
-    std::transform(v.begin(), v.end(), v.begin(),
-                   [norm](const float &x) { return x / (float)norm; });
+
+    norm = 1. / (double)sqrt(norm);
+    for (uint i = 0; i < v.size(); i++) { v[i] = v[i] * norm; }
+    // double norm = std::inner_product(v.begin(), v.end(), v.begin(), 0.0);
+    // if (norm <= 0)
+    // {
+    //     throw std::runtime_error(
+    //         "Normalization ERROR, sample vector cannot consist of zeros!");
+    // }
+    // norm = sqrt(norm);
+    // std::transform(v.begin(), v.end(), v.begin(),
+    //                [norm](const float &x) { return x / (float)norm; });
 }
 
 void TEC::CCM::CalculateEnergyShifts(const unsigned int threads)
@@ -800,13 +810,9 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix()
             // get to total ratio of "bin equivalent widths" we are covering
             // with the new energy
             total_ratio = static_cast<double>(bin_end - bin_start - 1);
-            // std::cout << std::setprecision(6) << "total ratio " <<
-            // total_ratio << " ";
             total_ratio += (double)(axis->GetBinUpEdge(bin_start) - new_en_low_edge) /
                            (double)bin_width;
-            // std::cout << std::setprecision(6) << total_ratio << " ";
             total_ratio += (new_en_up_edge - axis->GetBinLowEdge(bin_end)) / bin_width;
-            // std::cout << std::setprecision(6) << total_ratio << std::endl;
             // set manually to new lower bin content
             {
                 global_bin = fFixedTEMAT->GetBin(time_index, bin_start);
@@ -863,8 +869,9 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix(const TH2 *input_mat)
 
     Int_t global_bin, bin_start, bin_end;
 
-    const TAxis   *axis      = fixed_mat->GetYaxis();
-    const Double_t bin_width = axis->GetBinWidth(1);
+    const TAxis   *axis               = fixed_mat->GetYaxis();
+    const Double_t bin_width          = axis->GetBinWidth(1);
+    const Double_t inverted_bin_width = 1. / (double)axis->GetBinWidth(1);
 
     for (int time_bin = 1; time_bin <= fixed_mat->GetXaxis()->GetNbins(); time_bin++)
     {
@@ -929,21 +936,22 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix(const TH2 *input_mat)
             }
             // get to total ratio of "bin equivalent widths" we are covering
             // with the new energy
-            total_ratio = static_cast<double>(bin_end - bin_start - 1);
-            // std::cout << std::setprecision(6) << "total ratio " <<
-            // total_ratio << " ";
-            total_ratio += (double)(axis->GetBinUpEdge(bin_start) - new_en_low_edge) /
-                           (double)bin_width;
-            // std::cout << std::setprecision(6) << total_ratio << " ";
-            total_ratio += (new_en_up_edge - axis->GetBinLowEdge(bin_end)) / bin_width;
-            // std::cout << std::setprecision(6) << total_ratio << std::endl;
+            // number of whole bins covered
+            total_ratio = (new_en_up_edge - new_en_low_edge) * inverted_bin_width;
+            if (total_ratio < 1.0) { total_ratio = 1.0; }
+
+            // total_ratio = static_cast<double>(bin_end - bin_start - 1);
+            // total_ratio += (double)(axis->GetBinUpEdge(bin_start) - new_en_low_edge) *
+            //                inverted_bin_width;
+            // total_ratio += (new_en_up_edge - axis->GetBinLowEdge(bin_end)) *
+            //                inverted_bin_width;
             // set manually to new lower bin content
             {
                 global_bin = fixed_mat->GetBin(time_bin, bin_start);
                 fixed_mat->AddBinContent(
                     global_bin,
-                    (bin_cont * (axis->GetBinUpEdge(bin_start) - new_en_low_edge) /
-                     bin_width) /
+                    (bin_cont * (axis->GetBinUpEdge(bin_start) - new_en_low_edge) *
+                     inverted_bin_width) /
                         total_ratio);
             }
             // set manually to new upper bin content
@@ -951,8 +959,8 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix(const TH2 *input_mat)
                 global_bin = fixed_mat->GetBin(time_bin, bin_end);
                 fixed_mat->AddBinContent(
                     global_bin,
-                    (bin_cont * (new_en_up_edge - axis->GetBinLowEdge(bin_end)) /
-                     bin_width) /
+                    (bin_cont * (new_en_up_edge - axis->GetBinLowEdge(bin_end)) *
+                     inverted_bin_width) /
                         total_ratio);
             }
             // in case there are more bins in between, fill them here (skipping
@@ -1198,6 +1206,12 @@ void TEC::CCM::UseGaussianResult()
             ResVec[roi_index][time_index].energy_shift =
                 V.TEMAT->GetYaxis()->GetBinWidth(1) *
                 ResVec[roi_index][time_index].bin_shift;
+            if (time_index == 1848)
+            {
+                std::cout << "gauss " << ResVec[roi_index][time_index].gfit_mu << " "
+                          << ResVec[roi_index][time_index].bin_shift << " "
+                          << ResVec[roi_index][time_index].energy_shift << std::endl;
+            }
         }
     }
     fForceRebuildInterpolators = true;
@@ -1206,17 +1220,23 @@ void TEC::CCM::UseGaussianResult()
 
 void TEC::CCM::UsePolynomialResult()
 {
-
     for (uint roi_index = 0; roi_index < V.ROIs.size(); roi_index++)
     {
         for (size_t time_index = 0; time_index < V.time_bins; time_index++)
         {
+
             ResVec[roi_index][time_index].bin_shift =
                 ResVec[roi_index][time_index].poly_shift +
                 V.ROIs[roi_index].base_shift_value;
             ResVec[roi_index][time_index].energy_shift =
                 V.TEMAT->GetYaxis()->GetBinWidth(1) *
                 ResVec[roi_index][time_index].bin_shift;
+            if (time_index == 1848)
+            {
+                std::cout << "poly2 " << ResVec[roi_index][time_index].poly_shift << " "
+                          << ResVec[roi_index][time_index].bin_shift << " "
+                          << ResVec[roi_index][time_index].energy_shift << std::endl;
+            }
         }
     }
     fForceRebuildInterpolators = true;
@@ -1231,15 +1251,24 @@ void TEC::CCM::UseMaxDPResult()
         {
             auto maxdp_iterator =
                 std::max_element(ResVec[roi_index][time_index].dp_vec.begin(),
-                                 ResVec[roi_index][time_index].dp_vec.end(),
-                                 [](const double &a, const double &b) { return a < b; });
-            auto maxdp_shift = std::distance(ResVec[roi_index][time_index].dp_vec.begin(),
-                                             maxdp_iterator);
+                                 ResVec[roi_index][time_index].dp_vec.end());
+
+            int maxdp_shift = std::distance(ResVec[roi_index][time_index].dp_vec.begin(),
+                                            maxdp_iterator);
+            // std::cout << "MaxDP shift: "
+            //           << maxdp_shift + V.ROIs[roi_index].base_shift_value << " time "
+            //           << time_index << std::endl;
             ResVec[roi_index][time_index].bin_shift =
-                double(maxdp_shift + V.ROIs[roi_index].base_shift_value);
+                (maxdp_shift + V.ROIs[roi_index].base_shift_value);
             ResVec[roi_index][time_index].energy_shift =
                 V.TEMAT->GetYaxis()->GetBinWidth(1) *
                 ResVec[roi_index][time_index].bin_shift;
+            if (time_index == 1848)
+            {
+                std::cout << "maxdp " << maxdp_shift << " "
+                          << ResVec[roi_index][time_index].bin_shift << " "
+                          << ResVec[roi_index][time_index].energy_shift << std::endl;
+            }
         }
     }
     fForceRebuildInterpolators = true;
@@ -1303,6 +1332,32 @@ void TEC::CCM::CheckReferenceVectors()
     }
 }
 
+std::unique_ptr<TGraph> TEC::CCM::GetDotProductGraph(const size_t roi_index,
+                                                     const int    time_bin)
+{
+    if (roi_index >= V.ROIs.size())
+    {
+        throw std::runtime_error("ROI index out of bounds");
+    }
+    std::unique_ptr<TGraph> gr = std::make_unique<TGraph>();
+
+    const auto rc = this->GetResultContainer(roi_index, time_bin);
+    if (rc == nullptr) { throw std::runtime_error("Result container is nullptr"); }
+    double sum = 0;
+    for (int i = 0; i < rc->dp_vec.size(); i++)
+    {
+        sum += rc->dp_vec.at(i);
+        gr->AddPoint(i + V.ROIs[roi_index].base_shift_value, rc->dp_vec.at(i));
+    }
+    gr->SetName(Form("dot_product_graph_%i_%i", roi_index, time_bin));
+    gr->SetTitle(Form("Dot product graph for ROI %i, time bin %i", roi_index, time_bin));
+    gr->GetXaxis()->SetTitle(
+        Form("Bin shift of ROI %i at time bin %i", roi_index, time_bin));
+
+    std::cout << "Sum of dot product vector: " << sum << std::endl;
+    return gr;
+}
+
 std::unique_ptr<TGraph> TEC::CCM::GetInterpolationGraph(const size_t ROI_index,
                                                         const int    subdivide,
                                                         const bool   valid_only)
@@ -1331,151 +1386,6 @@ std::unique_ptr<TGraph> TEC::CCM::GetInterpolationGraph(const size_t ROI_index,
     }
     return gr;
 }
-
-// void TEC::CCM::SmoothShifts_Lowess(const int ROI_index, const double lowess_span)
-// {
-
-//     if (ROI_index >= V.ROIs.size())
-//     {
-//         throw std::runtime_error("ROI index out of bounds");
-//     }
-//     fFitDone = false;
-//     TGraph gr_data;
-
-//     auto *interpolator = &V.ROIs[ROI_index].interpolator;
-//     interpolator->ClearPoints();
-//     for (int time_index = 0; time_index < V.time_bins; time_index++)
-//     {
-//         if (ResVec[ROI_index][time_index].isValid)
-//         {
-//             gr_data.AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
-//                              ResVec[ROI_index][time_index].energy_shift);
-//         }
-//         else
-//         {
-//             // do not smooth if we have too little points. Just copy points to
-//             // interpolator
-//             if (gr_data.GetN() < MINIMUM_SMOOTHING_POINTS)
-//             {
-//                 for (int point = 0; point < gr_data.GetN(); point++)
-//                 {
-//                     interpolator->AddPoint(gr_data.GetPointX(point),
-//                                            gr_data.GetPointY(point), true);
-//                 }
-//             }
-//             else
-//             {
-//                 std::cout << "Smoothing " << gr_data.GetN() << std::endl;
-//                 TGraphSmooth gs;
-//                 auto        *gr_smoothed = gs.SmoothLowess(&gr_data, "", lowess_span);
-//                 for (int point = 0; point < gr_smoothed->GetN(); point++)
-//                 {
-//                     interpolator->AddPoint(gr_smoothed->GetPointX(point),
-//                                            gr_smoothed->GetPointY(point), true);
-//                 }
-//             }
-//             interpolator->AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
-//                                    ResVec[ROI_index][time_index].energy_shift, false);
-//             gr_data = TGraph();
-//         }
-//     }
-
-//     if (gr_data.GetN() < MINIMUM_SMOOTHING_POINTS)
-//     {
-//         for (int point = 0; point < gr_data.GetN(); point++)
-//         {
-//             interpolator->AddPoint(gr_data.GetPointX(point), gr_data.GetPointY(point),
-//                                    true);
-//         }
-//     }
-//     else
-//     {
-//         TGraphSmooth gs;
-//         auto        *gr_smoothed = gs.SmoothLowess(&gr_data, "", lowess_span);
-//         for (int point = 0; point < gr_smoothed->GetN(); point++)
-//         {
-//             interpolator->AddPoint(gr_smoothed->GetPointX(point),
-//                                    gr_smoothed->GetPointY(point), true);
-//         }
-//     }
-// }
-
-// void TEC::CCM::SmoothShifts_KernelSmoother(const int ROI_index, const double bandwidth)
-// {
-//     if (fForceRebuildInterpolators) { this->BuildInterpolators(); }
-
-//     if (ROI_index >= V.ROIs.size())
-//     {
-//         throw std::runtime_error("ROI index out of bounds");
-//     }
-//     fFitDone = false;
-//     fCorrectionFits.clear();
-//     TGraph gr_data;
-
-//     auto *interpolator = &V.ROIs[ROI_index].interpolator;
-//     interpolator->ClearPoints();
-//     for (int time_index = 0; time_index < V.time_bins; time_index++)
-//     {
-//         if (ResVec[ROI_index][time_index].isValid)
-//         {
-//             gr_data.AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
-//                              ResVec[ROI_index][time_index].energy_shift);
-//         }
-//         else
-//         {
-//             // do not smooth if we have too little points. Just copy points to
-//             // interpolator
-//             if (gr_data.GetN() < MINIMUM_SMOOTHING_POINTS)
-//             {
-//                 for (int point = 0; point < gr_data.GetN(); point++)
-//                 {
-//                     interpolator->AddPoint(gr_data.GetPointX(point),
-//                                            gr_data.GetPointY(point), true);
-//                     std::cout << "shit points " << time_index << " " << gr_data.GetN()
-//                               << std::endl;
-//                 }
-//             }
-//             else
-//             {
-//                 // std::cout << "Smoothing in progress " << gr_data.GetN() <<
-//                 std::endl; TGraphSmooth gs("normal"); auto        *gr_smoothed =
-//                 gs.SmoothKern(&gr_data, "normal", bandwidth); for (int point = 0; point
-//                 < gr_smoothed->GetN(); point++)
-//                 {
-//                     // std::cout << "d: " << gr_data.GetPointX(point) << " "
-//                     //           << gr_data.GetPointY(point) << std::endl;
-//                     // std::cout << "s: " << gr_smoothed->GetPointX(point) << " "
-//                     //           << gr_smoothed->GetPointY(point) << std::endl;
-//                     interpolator->AddPoint(gr_smoothed->GetPointX(point),
-//                                            gr_smoothed->GetPointY(point), true);
-//                 }
-//             }
-//             interpolator->AddPoint(V.TEMAT->GetXaxis()->GetBinCenter(time_index + 1),
-//                                    ResVec[ROI_index][time_index].energy_shift, false);
-//             gr_data = TGraph();
-//         }
-//     }
-
-//     if (gr_data.GetN() < MINIMUM_SMOOTHING_POINTS)
-//     {
-//         for (int point = 0; point < gr_data.GetN(); point++)
-//         {
-//             interpolator->AddPoint(gr_data.GetPointX(point), gr_data.GetPointY(point),
-//                                    true);
-//         }
-//     }
-//     else
-//     {
-//         TGraphSmooth gs("normal");
-//         auto        *gr_smoothed = gs.SmoothKern(&gr_data, "normal", bandwidth);
-//         for (int point = 0; point < gr_smoothed->GetN(); point++)
-//         {
-//             interpolator->AddPoint(gr_smoothed->GetPointX(point),
-//                                    gr_smoothed->GetPointY(point), true);
-//         }
-//     }
-//     std::cout << "Smoothing finish " << std::endl;
-// }
 
 void TEC::CCM::SmoothShifts(const SmootherType smoother,
                             const double       smoother_parameter,

@@ -49,6 +49,9 @@ class CrossCorrel
                  std::mutex       &mtx_task,
                  std::mutex       &mtx_fit);
 
+    int    Normalize(std::vector<float> &v);
+    double DotProduct(const std::vector<float> &v1, const std::vector<float> &v2);
+
   private:
     int current_task;
 
@@ -63,9 +66,7 @@ class CrossCorrel
     VarManager        *V;
     ResCont          **ResVec;
 
-    void   ROIAnalysis(const int ROI, const int time, std::mutex &mtx_fit);
-    int    Normalize(std::vector<float> &v);
-    double DotProduct(std::vector<float> &v1, std::vector<float> &v2);
+    void ROIAnalysis(const int ROI, const int time, std::mutex &mtx_fit);
 
     void SaveToContainer(const int time, const int ROI, std::mutex &mtx_fit);
 
