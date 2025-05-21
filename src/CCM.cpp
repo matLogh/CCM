@@ -288,7 +288,8 @@ void TEC::CCM::Normalize(std::vector<float> &v)
     if (norm <= 0)
     {
         throw std::runtime_error(
-            "Normalization ERROR, sample vector cannot consist of zeros!");
+            "Normalization ERROR, sample vector cannot consist of zeros! Maybe your "
+            "reference time is not set correctly?");
     }
 
     norm = 1. / (double)sqrt(norm);
@@ -592,8 +593,11 @@ const TEC::FitCont TEC::CCM::GetCorrectionFit(const double time)
         auto *interpolator = &V.ROIs[ROI_index].interpolator;
         if (interpolator->IsValueValid(time))
         {
-            x.emplace_back(V.ROIs[ROI_index].desired_energy);
-            y.emplace_back(V.ROIs[ROI_index].desired_energy - interpolator->Eval(time));
+            // x.emplace_back(V.ROIs[ROI_index].desired_energy);
+            // y.emplace_back(V.ROIs[ROI_index].desired_energy -
+            // interpolator->Eval(time));
+            x.emplace_back(V.ROIs[ROI_index].desired_energy + interpolator->Eval(time));
+            y.emplace_back(V.ROIs[ROI_index].desired_energy);
         }
     }
 
@@ -740,6 +744,8 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix()
 
     fFixedTEMAT = std::shared_ptr<TH2>(clone);
     fFixedTEMAT->Reset();
+    fFixedTEMAT->SetName(Form("%s_fixed", V.TEMAT->GetName()));
+    fFixedTEMAT->SetTitle(Form("%s_fixed", V.TEMAT->GetTitle()));
 
     Double_t bin_cont;
     Double_t total_ratio, en_low_edge, en_up_edge, new_en_low_edge, new_en_up_edge;
@@ -1206,12 +1212,6 @@ void TEC::CCM::UseGaussianResult()
             ResVec[roi_index][time_index].energy_shift =
                 V.TEMAT->GetYaxis()->GetBinWidth(1) *
                 ResVec[roi_index][time_index].bin_shift;
-            if (time_index == 1848)
-            {
-                std::cout << "gauss " << ResVec[roi_index][time_index].gfit_mu << " "
-                          << ResVec[roi_index][time_index].bin_shift << " "
-                          << ResVec[roi_index][time_index].energy_shift << std::endl;
-            }
         }
     }
     fForceRebuildInterpolators = true;
@@ -1231,12 +1231,6 @@ void TEC::CCM::UsePolynomialResult()
             ResVec[roi_index][time_index].energy_shift =
                 V.TEMAT->GetYaxis()->GetBinWidth(1) *
                 ResVec[roi_index][time_index].bin_shift;
-            if (time_index == 1848)
-            {
-                std::cout << "poly2 " << ResVec[roi_index][time_index].poly_shift << " "
-                          << ResVec[roi_index][time_index].bin_shift << " "
-                          << ResVec[roi_index][time_index].energy_shift << std::endl;
-            }
         }
     }
     fForceRebuildInterpolators = true;
@@ -1263,12 +1257,6 @@ void TEC::CCM::UseMaxDPResult()
             ResVec[roi_index][time_index].energy_shift =
                 V.TEMAT->GetYaxis()->GetBinWidth(1) *
                 ResVec[roi_index][time_index].bin_shift;
-            if (time_index == 1848)
-            {
-                std::cout << "maxdp " << maxdp_shift << " "
-                          << ResVec[roi_index][time_index].bin_shift << " "
-                          << ResVec[roi_index][time_index].energy_shift << std::endl;
-            }
         }
     }
     fForceRebuildInterpolators = true;

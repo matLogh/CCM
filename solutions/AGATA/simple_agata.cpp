@@ -15,6 +15,7 @@
 #include "TH1D.h"
 #include "TH2D.h"
 #include "TLegend.h"
+#include "TMultiGraph.h"
 #include "TROOT.h"
 #include "TTree.h"
 
@@ -29,31 +30,34 @@ using namespace TEC;
 #define DATA_PATH ""
 #endif
 
-const double reference_time_bgn = 3710;
-const double reference_time_end = 3711;
+const double reference_time_bgn = 3700;
+const double reference_time_end = 3710;
 
-std::shared_ptr<TH2F> get_matrix()
+const std::array<double, 5> roiarr{2746., 2754., -90., 10., 2749.};
+
+std::shared_ptr<TH2> get_matrix()
 {
     TFile *f = TFile::Open(
         (std::string(DATA_PATH) + "/example_data/agata_LNLexp035_0006_07B.root").c_str());
-    std::shared_ptr<TH2F> mat((TH2F *)f->Get("hE0_TS_07B"));
+    std::shared_ptr<TH2> mat((TH2F *)f->Get("hE0_TS_07B"));
 
     return mat;
 }
 
 int main(int argc, char **argv)
 {
-    TApplication         app("app", 0, 0);
-    auto                 temat = get_matrix();
-    std::shared_ptr<TH2> TEMAT(temat->Rebin2D(1, 1));
+    TApplication app("app", 0, 0);
+    auto         TEMAT = get_matrix();
+    // auto                 temat = get_matrix();
+    // std::shared_ptr<TH2> TEMAT(temat->Rebin2D(1, 1));
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
     TF1 fcn("gain_fcn", "[0]*x", 0, 32000);
 
     std::vector<RegionOfInterest> ROIs;
-    ROIs.emplace_back(RegionOfInterest(TEMAT, 2740, 2760, -100., 100., 2749. * 0.98));
-
+    ROIs.emplace_back(
+        RegionOfInterest(TEMAT, roiarr[0], roiarr[1], roiarr[2], roiarr[3], roiarr[4]));
     // create CCM object
     CCM fix(TEMAT, ROIs, reference_time_bgn, reference_time_end);
     fix.SetCorrectionFunction(fcn, "");
@@ -64,6 +68,8 @@ int main(int argc, char **argv)
     fix.CalculateCorrectionFits();
     auto TEMAT_fixed = fix.FixMatrix();
     fix.SaveToRootFile();
+    fix.SaveShiftTable("simpleAgata_shiftTable_0006_07B.txt");
+    fix.SaveFitTable("simpleAgata_fitTable_0006_07B.txt");
 
     auto *proj_old = TEMAT->ProjectionY();
     proj_old->SetLineColor(kRed);
@@ -73,18 +79,20 @@ int main(int argc, char **argv)
     proj_fixed->SetLineColor(kBlue);
 
     TCanvas c0("c_mat", "Matrices - simple_example", 1200, 600);
+    c0.SetCrosshair(1);
     c0.Divide(1, 2);
     c0.cd(1);
-    TEMAT->GetYaxis()->SetRangeUser(2600, 2800);
+    TEMAT->GetYaxis()->SetRangeUser(roiarr[0] + roiarr[2], roiarr[1] + roiarr[3]);
     TEMAT->SetTitle("Original matrix");
     TEMAT->Draw("COLZ");
     c0.cd(2);
-    TEMAT_fixed->GetYaxis()->SetRangeUser(2600, 2800);
+    TEMAT_fixed->GetYaxis()->SetRangeUser(roiarr[0] + roiarr[2], roiarr[1] + roiarr[3]);
     TEMAT_fixed->SetTitle("Corrected matrix");
     TEMAT_fixed->Draw("COLZ");
 
     TCanvas c1("c_hist", "Histograms - simple_example", 800, 600);
     c1.SetLogy();
+    c1.SetCrosshair(1);
     proj_fixed->Draw();
     proj_old->Draw("SAME");
 
@@ -109,17 +117,22 @@ int main(int argc, char **argv)
     interpol->SetMarkerSize(0.5);
     interpol->Draw("ALP");
 
-    TCanvas cx("c_shifts", "Shifts - simple_example", 800, 600);
-    cx.Divide(1, 2);
-    cx.cd(1);
-    TEMAT->GetYaxis()->SetRangeUser(2600, 2800);
+    TCanvas c4("c_shifts", "Shifts - simple_example", 800, 600);
+    c4.Divide(1, 2);
+    c4.SetCrosshair(1);
+    c4.cd(1);
+    TEMAT->GetYaxis()->SetRangeUser(roiarr[0] + roiarr[2], roiarr[1] + roiarr[3]);
     TEMAT->SetTitle("Original matrix");
     TEMAT->Draw("COLZ");
-    cx.cd(2);
+    c4.cd(2);
     shifts->Draw("ALP");
 
-    TCanvas cxx("c_dot_product", "Dot product - simple_example", 800, 600);
-    auto    dot_product = fix.GetDotProductGraph(0, 1848);
+    TCanvas c5("c_dot_product", "Dot product - simple_example", 800, 600);
+    c5.SetCrosshair(1);
+    auto dot_product = fix.GetDotProductGraph(0, 1849);
+    dot_product->SetMarkerColor(kBlue);
+    dot_product->SetMarkerStyle(20);
+    dot_product->SetMarkerSize(0.5);
     dot_product->Draw("ALP");
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
