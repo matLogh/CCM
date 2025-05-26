@@ -9,6 +9,22 @@
 #include <string>
 #include <vector>
 
+#include <atomic>
+#include <csignal>
+
+std::atomic<bool> gTerminate_program{false};
+
+void signal_handler(int signal)
+{
+    if (signal == SIGINT)
+    {
+        std::cout << "\nCtrl+C detected. Terminating gracefully..." << std::endl;
+        gTerminate_program = true;
+    }
+}
+
+void setup_signal_handling() { std::signal(SIGINT, signal_handler); }
+
 std::string fourCharInt(int I)
 {
     std::stringstream ID;
@@ -140,43 +156,42 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
     std::string source = argv;
     std::transform(source.begin(), source.end(), source.begin(),
                    [](unsigned char c) { return std::tolower(c); });
-
-    if (source == "60co" || "co60")
+    if (source.compare("60co") == 0 || source.compare("co60") == 0)
     {
         ROI      = {1332.492, 1300., 1370., -20, 20}; // Example values for 60Co
         fit_peak = {1173.228, 1165., 1185.};
     }
-    else if (source == "133ba" || "ba133")
+    else if (source.compare("133ba") == 0 || source.compare("ba133") == 0)
     {
         ROI      = {356.012, 340., 370., -10, 10};
         fit_peak = {302.85, 290., 310.};
     }
-    else if (source == "152eu" || "eu152")
+    else if (source.compare("152eu") == 0 || source.compare("eu152") == 0)
     {
         throw std::runtime_error("152Eu source is not implemented yet");
     }
-    else if (source == "226ra" || "ra226")
+    else if (source.compare("226ra") == 0 || source.compare("ra226") == 0)
     {
         // decay of 214Bi
-        ROI      = {1764.491, 1720, 1780, -20, 20};
+        ROI      = {1764.491, 1720, 1780, -50, 50};
         fit_peak = {2204.1, 2150., 2250.};
     }
-    else if (source == "66ga" || "ga66")
+    else if (source.compare("66ga") == 0 || source.compare("ga66") == 0)
     {
-        ROI      = {2751.835, 2700., 2800., -20, 20};
+        ROI      = {2751.835, 2720., 2780., -50, 50};
         fit_peak = {4295.187, 4220., 4360.};
     }
-    else if (source == "56co" || "co56")
+    else if (source.compare("56co") == 0 || source.compare("co56") == 0)
     {
         throw std::runtime_error("56Co source is not implemented yet");
     }
-    else if (source == "na22" || "22na")
+    else if (source.compare("22na") == 0 || source.compare("na22") == 0)
     {
         throw std::runtime_error("Na-22 source is not implemented yet");
     }
-    else if (source == "cs137" || "137cs")
+    else if (source.compare("cs137") == 0 || source.compare("137cs") == 0)
     {
-        throw std::runtime_error("Na-22 source is not implemented yet");
+        throw std::runtime_error("Cs-137 source is not implemented yet");
     }
     else { throw std::runtime_error("Unknown source: " + source); }
 }
