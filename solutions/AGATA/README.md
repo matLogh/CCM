@@ -6,6 +6,8 @@ Fixing the time-varying energy gain of AGATA requires following steps:
 - find correction parameters 
 - modify postPSAFilter in ```gen_conf.py``` to include the ```TimeEvoCC.conf``` files   
 
+Full list of options for the programs described below can be obtained by calling ```program_name --help```.
+
 ## Creating time-energy matrices
 
 Executable ```matTimeEvo_AGATA``` is made for this exact purpose, use the ```--help``` for full list of input options. Matrices are constructed from trees produced by TreeBuilder consumer of narval/femul. Matrices are constructed **only for the core hits**.
@@ -17,6 +19,10 @@ Time range of the matrices is plotted in minutes and is deduced from the first a
 **Note 1** Size of resulting matrices can be large enough to crash your computer. If this happens, you normally get the not-very-verbosive "Killed" message in terminal. If that happens, either change binning of the matrices or, preferably, select less crystals for which the matrices are being made for. 
 
 **Note 2** If you want to use the *"poor man's grid search"* of the TimeEvo solver (see next section), it is highly recommended to create large matrices in this step. Size of the input matrix has a big effect on level of improvement one can achieve and grid search is also re-binning the input matrix.
+
+## Automated time evolution detection
+
+The ```detectTimeEvo``` is designed to pin point which runs and crystals from a provided set are in need of the timeEvo corrections. Program is choosing a reference time window automatically somewhere in 1/3 of the matrix as a reference time (with some checks to prevent using empty/low statistics) and runs the CCM code in the lightweight mode: only shifts from the "ideal" energy are calculated. If an energy shift above pre-set threshold (default 0.5 keV) is reached, the [run, crystal] combination is marked as needed to be corrected. The threshold can be set using ```--shift_threshold``` option. During the runtime, program prints the "offending" [run,crystal] with some statistics about the calculated shifts, such as mean, standard deviation, root mean square, max energy shift and median energy shift. Note that these are based on a quasi-random reference window, which might not be ideal. At the end, program will print a list of a bad crystals for each run. You can use ```--draw``` option, that will for each bad [run,crystal] draw a canvas with pads for the matrix (focused on the provided ROI) and graph of the shifts. 
 
 ## Solving the time evolution
 
