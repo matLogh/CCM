@@ -1,5 +1,8 @@
+#include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -9,10 +12,12 @@
 #include <TF1.h>
 #include <TFile.h>
 #include <TH2.h>
+#include <TSystem.h>
 
 #include "CCM.h"
 
 #include "common.cpp"
+#include <thread>
 
 using namespace TEC;
 
@@ -21,6 +26,37 @@ std::vector<std::string> gCRYSTALLIST;
 std::string              gDIR            = "timeEvo";
 float                    gSHIFTTHRESHOLD = 0.5; // keV
 std::vector<float>       gROIarr;
+bool                     gDrawCanvases = false;
+
+std::vector<std::shared_ptr<TObject>> guiObjects;
+
+std::array<double, 6> calculate_statistics(const std::vector<float> &values)
+{
+    double mean = std::accumulate(values.begin(), values.end(), 0.0) / values.size();
+
+    // Standard deviation
+    double sq_sum = std::inner_product(values.begin(), values.end(), values.begin(), 0.0);
+    double stdev  = std::sqrt(sq_sum / values.size() - mean * mean);
+
+    // RMS
+    double rms = std::sqrt(sq_sum / values.size());
+
+    // Max absolute value
+    double max_abs =
+        *std::max_element(values.begin(), values.end(),
+                          [](double a, double b) { return std::abs(a) < std::abs(b); });
+
+    // Median
+    std::vector<float> sorted = values;
+    std::sort(sorted.begin(), sorted.end());
+    double median = sorted[sorted.size() / 2];
+
+    double above_threshold =
+        std::count_if(values.begin(), values.end(),
+                      [](double value) { return std::abs(value) > gSHIFTTHRESHOLD; });
+
+    return {above_threshold, mean, stdev, rms, max_abs, median};
+}
 
 std::array<float, 2> get_ref_time(std::shared_ptr<TH2> TEMAT)
 {
@@ -57,11 +93,12 @@ std::array<float, 2> get_ref_time(std::shared_ptr<TH2> TEMAT)
 }
 
 bool detect_time_evolution(std::shared_ptr<TH2> temat,
-                           int                 &over_threshold_counter,
-                           float               &average_over_threshold_value)
+                           std::vector<float>  &over_threshold_values)
 {
-    std::shared_ptr<TH2> TEMAT(temat->Rebin2D(4, 4));
-    auto                 ref_time = get_ref_time(TEMAT);
+
+    std::shared_ptr<TH2> TEMAT(temat->Rebin2D(2, 2, Form("%s_rebin", temat->GetName())));
+    TEMAT->SetDirectory(0);
+    auto ref_time = get_ref_time(TEMAT);
     if (ref_time.at(0) < 0 || ref_time.at(1) < 0)
     {
         std::cerr << "Error! Could not find suitable reference time in the matrix "
@@ -73,39 +110,45 @@ bool detect_time_evolution(std::shared_ptr<TH2> temat,
     std::vector<RegionOfInterest> rois;
     rois.emplace_back(RegionOfInterest(TEMAT, gROIarr.at(1), gROIarr.at(2), gROIarr.at(3),
                                        gROIarr.at(4), gROIarr.at(0)));
-    // Create a CCM object
     CCM ccm(TEMAT, rois, ref_time.at(0), ref_time.at(1));
     ccm.CalculateEnergyShifts(8);
-    // TF1 f("fcn", "[0]*x", 0, 34000);
-    // ccm.SetCorrectionFunction(f, "");
-    // ccm.CalculateCorrectionFits();
-    // auto TEMAT_fixed = ccm.FixMatrix();
 
-    over_threshold_counter       = 0;
-    average_over_threshold_value = 0.;
+    over_threshold_values.clear();
     for (int i = 0; i < ccm.GetNumberOfTimeIndices(); i++)
     {
         auto res = ccm.GetResultContainer(0, i);
         if (res->energy_shift > gSHIFTTHRESHOLD)
         {
-            std::cout << res->energy_shift << " " << res->bin_shift << " "
-                      << res->poly_shift << " " << res->gfit_mu << " " << res->gfit_sigma
-                      << std::endl;
-            over_threshold_counter++;
-            average_over_threshold_value += abs(res->energy_shift);
+            over_threshold_values.push_back(res->energy_shift);
         }
     }
 
-    if (over_threshold_counter > 0)
+    if (over_threshold_values.size() > 0)
     {
-        std::cout << "counter: " << over_threshold_counter << std::endl;
-        TApplication app("app", nullptr, nullptr);
-        ccm.SaveShiftTable();
-        auto gr = ccm.GetROIShifts(0, false);
-        gr->Draw("ALP");
-        new TCanvas();
-        // TEMAT_fixed->Draw("COLZ");
-        app.Run();
+        if (gDrawCanvases)
+        {
+            std::string canvas_name = "canvas_" + std::string(TEMAT->GetName());
+            std::string canvas_title =
+                "TimeEvo DETECTED in " + std::string(TEMAT->GetName());
+            std::shared_ptr<TCanvas> c = std::make_shared<TCanvas>(
+                canvas_name.c_str(), canvas_title.c_str(), 1600, 900);
+            c->SetCrosshair(1);
+            c->Divide(1, 2);
+
+            c->cd(2);
+            auto _m = ccm.GetInputMatrix();
+            _m->GetYaxis()->SetRangeUser(gROIarr.at(1), gROIarr.at(2));
+            _m->Draw("COLZ");
+            guiObjects.emplace_back(_m);
+            c->cd(1);
+            auto gr = ccm.GetROIShifts(0, false);
+            gr->GetXaxis()->SetRangeUser(_m->GetXaxis()->GetXmin(),
+                                         _m->GetXaxis()->GetXmax());
+            gr->Draw("ALP");
+
+            guiObjects.emplace_back(gr.release());
+            guiObjects.emplace_back(c);
+        }
         return true;
     }
     return false;
@@ -113,6 +156,16 @@ bool detect_time_evolution(std::shared_ptr<TH2> temat,
 
 void print_help()
 {
+    std::cout << "This code uses some assumptions and hardcoded values to run CCM - "
+                 "namely it uses a reference time in around 1/3 of the matrix that is 2x "
+                 "in energy and 2x in time\n";
+    std::cout << "If a shift larger than set threshold (default 0.5) is detected, a "
+                 "TimeEvo is reported.\n";
+    std::cout << "Two reports are made: one while code is running showing also some "
+                 "statistics, and one at the end sorted by run number.\n";
+    std::cout << "You can use --draw option to draw matrices with calculated shifts "
+                 "while the code is running.\n\n";
+
     std::cout << "Usage: detectTimeEvo_AGATA [options]\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h                 Show this help message\n";
@@ -121,6 +174,8 @@ void print_help()
     std::cout << "  --run <1> <...>            Specify the run number\n";
     std::cout << "  --shift_threshold <1>      Energy threshold, if energy shift value "
                  "threshold is found the timeEvo is reported (default 0.5)\n";
+    std::cout << "  --draw                     Use this flag to enable drawing the "
+                 "matrices that are over the set threshold\n";
 
     std::cout << "  --ROI <1> <2> <3> <4> <5>  Specify the Region of "
                  "Interest (ROI) as:\n"
@@ -141,6 +196,7 @@ void print_help()
 
     std::cout << "  --dir <1>                  Set directory in which to search for "
                  "matrices\n";
+
     std::cout << std::endl << std::endl;
 }
 
@@ -241,6 +297,7 @@ void parse_args(int argc, char **argv)
             if (i + 1 < argc) { parse_ROI_source(argv[++i], gROIarr, peak); }
             else { throw std::invalid_argument("Missing value for --ROIsource"); }
         }
+        else if (arg == "--draw") { gDrawCanvases = true; }
 
         else
         {
@@ -254,16 +311,36 @@ void parse_args(int argc, char **argv)
             "Invalid number of arguments for --ROI. Expected 5 values.");
         exit(10);
     }
+
+    std::cout << "Parameters used are:" << std::endl;
+    std::cout << "Run number(s):    ";
+    for (const auto &run : gRUNLIST) { std::cout << run << " "; }
+    std::cout << std::endl;
+    std::cout << "Crystals:         ";
+    for (const auto &cry : gCRYSTALLIST) { std::cout << cry << " "; }
+    std::cout << std::endl;
+    std::cout << "Data directory:        " << gDIR << std::endl;
+    std::cout << "Energy shift threshold: " << gSHIFTTHRESHOLD << std::endl;
+    std::cout << "ROI:              ";
+    for (const auto &roi : gROIarr) { std::cout << roi << " "; }
+    std::cout << std::endl;
+    std::cout << "-----------------------------------------------------------"
+              << std::endl;
 }
 
 int main(int argc, char **argv)
 {
+    TApplication app("app", 0, 0);
     parse_args(argc, argv);
+
+    std::vector<std::pair<int, std::string>> detected_timeEvo;
 
     for (const auto &run : gRUNLIST)
     {
         for (const auto &crystal : gCRYSTALLIST)
         {
+            gSystem->ProcessEvents();
+
             auto  rfname = get_rootfilename(gDIR, run, crystal);
             TFile matfile(rfname.c_str(), "READ");
             if (matfile.IsZombie())
@@ -271,27 +348,62 @@ int main(int argc, char **argv)
                 throw std::runtime_error("Error! could not open/find the ROOT file " +
                                          rfname + " file");
             }
-            std::string          matrix_name = "hE0_TS_" + crystal;
-            std::shared_ptr<TH2> TEMAT((TH2 *)matfile.Get(matrix_name.c_str()));
+            std::string matrix_name = "hE0_TS_" + crystal;
+            TH2        *raw         = (TH2 *)matfile.Get(matrix_name.c_str());
+            if (!raw) throw std::runtime_error("Matrix not found: " + matrix_name);
+            std::shared_ptr<TH2> TEMAT(raw);
+            TEMAT->SetDirectory(0);
+            std::vector<float> over_threshold_value;
 
-            int   over_threshold_counter       = 0;
-            float average_over_threshold_value = 0.;
-            detect_time_evolution(TEMAT, over_threshold_counter,
-                                  average_over_threshold_value);
-            if (over_threshold_counter > 0)
+            if (detect_time_evolution(TEMAT, over_threshold_value))
             {
-                std::cout << "Run: " << run << " Crystal: " << crystal
-                          << " Time evolution detected! "
-                          << "Over threshold counter: " << over_threshold_counter
-                          << " Average over threshold value: "
-                          << average_over_threshold_value / over_threshold_counter
+                if (detected_timeEvo.size() == 0)
+                {
+                    std::cout << "TimeEvolution detected!" << std::endl;
+                }
+                auto stats = calculate_statistics(over_threshold_value);
+                std::cout << std::fixed << std::setprecision(2) << "  Run " << run
+                          << " crys " << crystal << ": "
+                          << "above thr: " << (int)stats.at(0) << " mean: " << stats.at(1)
+                          << " stdev: " << stats.at(2) << " rms: " << stats.at(3)
+                          << " max_abs: " << stats.at(4) << " median: " << stats.at(5)
                           << std::endl;
+                detected_timeEvo.emplace_back(std::make_pair(run, crystal));
             }
-            else
-            {
-                std::cout << "Run: " << run << " Crystal: " << crystal
-                          << " No time evolution detected!" << std::endl;
-            }
+            matfile.Close();
         }
     }
+
+    if (detected_timeEvo.size() != 0)
+    {
+        std::cout << "\n\n    *****Summary*****\n\nTimeEvolution shift above "
+                  << gSHIFTTHRESHOLD << " threshold was detected for:";
+
+        std::sort(detected_timeEvo.begin(), detected_timeEvo.end(),
+                  [](const auto &a, const auto &b) {
+                      if (a.first != b.first) return a.first < b.first;
+                      else
+                      {
+                          int num_a = std::stoi(a.second.substr(0, 2));
+                          int num_b = std::stoi(b.second.substr(0, 2));
+                          if (num_a != num_b) return num_a < num_b;
+                          else { return a.second[2] < b.second[2]; }
+                      }
+                  });
+        int _this_run = -1;
+        detected_timeEvo.front().first;
+        for (const auto &suspects : detected_timeEvo)
+        {
+            if (_this_run != suspects.first)
+            {
+                _this_run = suspects.first;
+                std::cout << "\n  Run " << _this_run << ":";
+            }
+            std::cout << " " << suspects.second;
+        }
+        std::cout << std::endl;
+    }
+    if (guiObjects.size() != 0) { app.Run(); }
+
+    return 0;
 }
