@@ -30,6 +30,33 @@ bool                     gDrawCanvases = false;
 
 std::vector<std::shared_ptr<TObject>> guiObjects;
 
+std::atomic<bool> gStopExecution{false};
+std::atomic<bool> gTerminate_program{false};
+
+void signal_handler(int signal)
+{
+    if (signal == SIGINT)
+    {
+        // if we are drawing canvases we will stop execution loop and jump to running
+        // TApplication
+        if (!gStopExecution.load() && gDrawCanvases)
+        {
+            gStopExecution = true;
+            std::cout << "\nCtrl+C detected. Stopping execution loop and no new "
+                         "histograms will be drawn!"
+                      << std::endl;
+        }
+        // if we are not drawing canvases or ctrl+c was pressed twice code terminates
+        else
+        {
+            std::cout << "\nCtrl+C detected again. Terminating program..." << std::endl;
+            exit(0);
+        }
+    }
+}
+
+void setup_signal_handling() { std::signal(SIGINT, signal_handler); }
+
 std::array<double, 6> calculate_statistics(const std::vector<float> &values)
 {
     double mean = std::accumulate(values.begin(), values.end(), 0.0) / values.size();
@@ -123,6 +150,7 @@ bool detect_time_evolution(std::shared_ptr<TH2> temat,
         }
     }
 
+    if (gStopExecution.load()) return false;
     if (over_threshold_values.size() > 0)
     {
         if (gDrawCanvases)
@@ -330,6 +358,8 @@ void parse_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
+    setup_signal_handling();
+
     TApplication app("app", 0, 0);
     parse_args(argc, argv);
 
@@ -337,8 +367,10 @@ int main(int argc, char **argv)
 
     for (const auto &run : gRUNLIST)
     {
+        if (gStopExecution.load()) break;
         for (const auto &crystal : gCRYSTALLIST)
         {
+            if (gStopExecution.load()) break;
             gSystem->ProcessEvents();
 
             auto  rfname = get_rootfilename(gDIR, run, crystal);

@@ -12,19 +12,6 @@
 #include <atomic>
 #include <csignal>
 
-std::atomic<bool> gTerminate_program{false};
-
-void signal_handler(int signal)
-{
-    if (signal == SIGINT)
-    {
-        std::cout << "\nCtrl+C detected. Terminating gracefully..." << std::endl;
-        gTerminate_program = true;
-    }
-}
-
-void setup_signal_handling() { std::signal(SIGINT, signal_handler); }
-
 std::string fourCharInt(int I)
 {
     std::stringstream ID;
