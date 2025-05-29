@@ -33,7 +33,7 @@ using namespace TEC;
 const double reference_time_bgn = 3700;
 const double reference_time_end = 3710;
 
-const std::array<double, 5> roiarr{2746., 2754., -90., 10., 2749.};
+const std::array<double, 5> ROIarr{2746., 2754., -90., 10., 2749.};
 
 std::shared_ptr<TH2> get_matrix()
 {
@@ -47,30 +47,98 @@ std::shared_ptr<TH2> get_matrix()
 int main(int argc, char **argv)
 {
     TApplication app("app", 0, 0);
-    auto         TEMAT = get_matrix();
-    // auto                 temat = get_matrix();
-    // std::shared_ptr<TH2> TEMAT(temat->Rebin2D(1, 1));
 
+    high_resolution_clock::time_point t0 = high_resolution_clock::now();
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
-    TF1 fcn("gain_fcn", "[0]*x", 0, 32000);
+    std::shared_ptr<TH2> TEMAT;
 
+    {
+        std::cout << "Fetching matrix...                                   "
+                  << std::flush;
+        TEMAT                                = get_matrix();
+        high_resolution_clock::time_point t2 = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(t2 - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+                  << " seconds" << std::endl;
+        t1 = high_resolution_clock::now();
+    }
+
+    std::cout << "Constructing CCM object...                           " << std::flush;
+    TF1                           fcn("gain_fcn", "[0]*x", 0, 32000);
     std::vector<RegionOfInterest> ROIs;
     ROIs.emplace_back(
-        RegionOfInterest(TEMAT, roiarr[0], roiarr[1], roiarr[2], roiarr[3], roiarr[4]));
+        RegionOfInterest(TEMAT, ROIarr[0], ROIarr[1], ROIarr[2], ROIarr[3], ROIarr[4]));
     // create CCM object
     CCM fix(TEMAT, ROIs, reference_time_bgn, reference_time_end);
     fix.SetCorrectionFunction(fcn, "");
-    fix.CalculateEnergyShifts(8);
-    // fix.UseMaxDPResult();
-    fix.UsePolynomialResult();
-    // fix.UseGaussianResult();
-    fix.CalculateCorrectionFits();
-    auto TEMAT_fixed = fix.FixMatrix();
-    fix.SaveToRootFile();
-    fix.SaveShiftTable("simpleAgata_shiftTable_0006_07B.txt");
-    fix.SaveFitTable("simpleAgata_fitTable_0006_07B.txt");
 
+    auto duration =
+        duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+    std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+              << " seconds" << std::endl;
+
+    {
+        std::cout << "Calculating energy shifts...                         "
+                  << std::flush;
+        fix.CalculateEnergyShifts(8);
+        auto duration =
+            duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+                  << " seconds" << std::endl;
+        t1 = high_resolution_clock::now();
+    }
+
+    {
+        std::cout << "Switching precise shift calculation to polynomial... "
+                  << std::flush;
+        // fix.UseMaxDPResult();
+        fix.UsePolynomialResult();
+        // fix.UseGaussianResult();
+        auto duration =
+            duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+                  << " seconds" << std::endl;
+        t1 = high_resolution_clock::now();
+    }
+
+    {
+        std::cout << "Calculating correction fits...                       "
+                  << std::flush;
+        fix.CalculateCorrectionFits();
+        auto duration =
+            duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+                  << " seconds" << std::endl;
+        t1 = high_resolution_clock::now();
+    }
+
+    std::shared_ptr<TH2> TEMAT_fixed;
+    {
+        std::cout << "Fixing input matrix...                               "
+                  << std::flush;
+        TEMAT_fixed = fix.FixMatrix();
+        auto duration =
+            duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+                  << " seconds" << std::endl;
+        t1 = high_resolution_clock::now();
+    }
+
+    {
+        std::cout << "Creating output files (ROOT file, shift&fit table)..."
+                  << std::flush;
+        fix.SaveToRootFile();
+        fix.SaveShiftTable("simpleAgata_shiftTable_0006_07B.txt");
+        fix.SaveFitTable("simpleAgata_fitTable_0006_07B.txt");
+        auto duration =
+            duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+                  << " seconds" << std::endl;
+        t1 = high_resolution_clock::now();
+    }
+
+    std::cout << "Creating and drawing nice plots, histograms etc...   " << std::flush;
     auto *proj_old = TEMAT->ProjectionY();
     proj_old->SetLineColor(kRed);
 
@@ -82,11 +150,11 @@ int main(int argc, char **argv)
     c0.SetCrosshair(1);
     c0.Divide(1, 2);
     c0.cd(1);
-    TEMAT->GetYaxis()->SetRangeUser(roiarr[0] + roiarr[2], roiarr[1] + roiarr[3]);
+    TEMAT->GetYaxis()->SetRangeUser(ROIarr[0] + ROIarr[2], ROIarr[1] + ROIarr[3]);
     TEMAT->SetTitle("Original matrix");
     TEMAT->Draw("COLZ");
     c0.cd(2);
-    TEMAT_fixed->GetYaxis()->SetRangeUser(roiarr[0] + roiarr[2], roiarr[1] + roiarr[3]);
+    TEMAT_fixed->GetYaxis()->SetRangeUser(ROIarr[0] + ROIarr[2], ROIarr[1] + ROIarr[3]);
     TEMAT_fixed->SetTitle("Corrected matrix");
     TEMAT_fixed->Draw("COLZ");
 
@@ -121,7 +189,7 @@ int main(int argc, char **argv)
     c4.Divide(1, 2);
     c4.SetCrosshair(1);
     c4.cd(1);
-    TEMAT->GetYaxis()->SetRangeUser(roiarr[0] + roiarr[2], roiarr[1] + roiarr[3]);
+    TEMAT->GetYaxis()->SetRangeUser(ROIarr[0] + ROIarr[2], ROIarr[1] + ROIarr[3]);
     TEMAT->SetTitle("Original matrix");
     TEMAT->Draw("COLZ");
     c4.cd(2);
@@ -135,10 +203,13 @@ int main(int argc, char **argv)
     dot_product->SetMarkerSize(0.5);
     dot_product->Draw("ALP");
 
-    high_resolution_clock::time_point t2 = high_resolution_clock::now();
-    auto duration                        = duration_cast<microseconds>(t2 - t1).count();
-    std::cout << "TOTAL DURATION OF " << duration / (double)1E6 << " seconds"
-              << std::endl;
+    duration = duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+    std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+              << " seconds" << std::endl;
+    t1 = high_resolution_clock::now();
+
+    duration = duration_cast<seconds>(high_resolution_clock::now() - t0).count();
+    std::cout << "\nTOTAL DURATION OF " << duration << " seconds" << std::endl;
 
     app.Run();
     return 0;
