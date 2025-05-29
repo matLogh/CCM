@@ -73,11 +73,11 @@ void TEC::CrossCorrel::ROIAnalysis(const int   ROI_index,
                                    const int   time,
                                    std::mutex &mtx_fit)
 {
-
     // create data vector with size that includes whole area around the floating vector
     std::vector<float> data_vec = GetDataVec(ROI_index, time);
 
     // vector of dot products
+    dp_vec.clear();
     dp_vec.resize((size_t)V->ROIs[(uint)ROI_index].displacement_steps);
     // temporary vector holding current data
     std::vector<float> temp_data(V->ROIs[(uint)ROI_index].vector_dimension);
@@ -90,8 +90,9 @@ void TEC::CrossCorrel::ROIAnalysis(const int   ROI_index,
         //     &data_vec[shift],
         //     &data_vec[shift + V->ROIs[(uint)ROI_index].vector_dimension]);
 
-        if (Normalize(temp_data) == 0) // 0 == its OK
-            dp_vec[shift] = DotProduct(temp_data, V->sample_vector[(uint)ROI_index]);
+        if (this->Normalize(temp_data) == 0) // 0 == its OK
+            dp_vec[shift] =
+                this->DotProduct(temp_data, V->sample_vector[(uint)ROI_index]);
         else { dp_vec[shift] = -999; }
     }
 

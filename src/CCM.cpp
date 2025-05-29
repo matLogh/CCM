@@ -191,10 +191,10 @@ std::unique_ptr<TGraph> TEC::CCM::GetROIShifts(const size_t roi_index,
     gr->SetName(Form("shift_ROI_%li", roi_index));
     gr->SetTitle(Form("shifts for ROI %li;Time;Energy shift", roi_index));
 
-    for (size_t time = 0; time < V.time_bins; time++)
+    for (size_t time_bin = 0; time_bin < V.time_bins; time_bin++)
     {
-        if (valid_only && !ResVec[roi_index][time].isValid) { continue; }
-        gr->AddPoint(GetMatrixTime(time), ResVec[roi_index][time].energy_shift);
+        if (valid_only && !ResVec[roi_index][time_bin].isValid) { continue; }
+        gr->AddPoint(GetMatrixTime(time_bin), ResVec[roi_index][time_bin].energy_shift);
     }
     return gr;
 }
@@ -333,7 +333,7 @@ void TEC::CCM::CalculateEnergyShifts(const unsigned int threads)
     {
         for (size_t i = 0; i < V.total_tasks; i++)
         {
-            // pass thread task, VarManger variable, mutex and ResVec as
+            // pass thread task, VarManger variable, mutex  as
             // reference
             t.push_back(std::thread(&CrossCorrel::Process, correlation_object[i].get(),
                                     i + 1, &fThreadTask, std::ref(mtx_task),
@@ -344,7 +344,7 @@ void TEC::CCM::CalculateEnergyShifts(const unsigned int threads)
     {
         for (size_t i = 0; i < fNthreads; i++)
         {
-            // pass thread task, VarManger variable, mutex and ResVec as
+            // pass thread task, VarManger variable, mutex  as
             // reference
             t.push_back(std::thread(&CrossCorrel::Process, correlation_object[i].get(),
                                     i + 1, &fThreadTask, std::ref(mtx_task),
@@ -485,7 +485,6 @@ void TEC::CCM::BuildInterpolator(const size_t ROI_index)
 
 void TEC::CCM::BuildInterpolators()
 {
-
     fFitDone = false;
 
     for (size_t ROI_index = 0; ROI_index < V.ROIs.size(); ROI_index++)
@@ -578,24 +577,21 @@ const TEC::FitCont TEC::CCM::GetCorrectionFit(const double time)
 {
     if (fForceRebuildInterpolators) { this->BuildInterpolators(); }
 
-    if (fCorrectionFits.find(time) != fCorrectionFits.end())
-    {
-        return fCorrectionFits.at(time);
-    }
+    // if (fCorrectionFits.find(time) != fCorrectionFits.end())
+    // {
+    //     return fCorrectionFits.at(time);
+    // }
 
     FitCont fit_result;
 
-    std::vector<double> x(V.ROIs.size());
-    std::vector<double> y(V.ROIs.size());
+    std::vector<double> x;
+    std::vector<double> y;
 
     for (uint ROI_index = 0; ROI_index < V.ROIs.size(); ROI_index++)
     {
         auto *interpolator = &V.ROIs[ROI_index].interpolator;
         if (interpolator->IsValueValid(time))
         {
-            // x.emplace_back(V.ROIs[ROI_index].desired_energy);
-            // y.emplace_back(V.ROIs[ROI_index].desired_energy -
-            // interpolator->Eval(time));
             x.emplace_back(V.ROIs[ROI_index].desired_energy + interpolator->Eval(time));
             y.emplace_back(V.ROIs[ROI_index].desired_energy);
         }
@@ -605,11 +601,13 @@ const TEC::FitCont TEC::CCM::GetCorrectionFit(const double time)
 
     // this might be confusing, but sometimes we can have a time where no ROI is valid -
     // e.g. when we have a gap in the data (e.g on run change)
-    if (strcmp(fcn->first->GetName(), EMPTY_FUNCTION_NAME.c_str()) == 0)
+    if ((x.size() == 0) ||
+        strcmp(fcn->first->GetName(), EMPTY_FUNCTION_NAME.c_str()) == 0)
     {
         fit_result.functionUsed = EMPTY_FUNCTION_NAME;
         return fit_result;
     }
+
     TGraph gr((int)x.size(), x.data(), y.data());
     gr.Fit(fcn->first, fcn->second.c_str());
     fit_result.functionUsed = fcn->first->GetName();
@@ -621,46 +619,6 @@ const TEC::FitCont TEC::CCM::GetCorrectionFit(const double time)
 
     return fit_result;
 }
-
-// void TEC::CCM::CalculateCorrectionFits(int time_subdivision)
-// {
-//     fCorrectionFits.clear();
-//     if (V.ROIs.size() == 0)
-//     {
-//         throw std::runtime_error("No ROIs added to the CCM object");
-//     }
-//     if (time_subdivision < 1)
-//     {
-//         throw std::runtime_error("Error! Time subdivision must be at least 1!");
-//     }
-
-//     const double step = V.TEMAT->GetXaxis()->GetBinWidth(1) /
-//     (double)(time_subdivision);
-//     // const double step = V.TEMAT->GetXaxis()->GetBinWidth(1) /
-//     // (double)(time_subdivision+1);
-//     double time;
-//     for (size_t time_index = 0; time_index < V.time_bins; time_index++)
-//     {
-//         time = V.TEMAT->GetXaxis()->GetBinCenter((int)time_index + 1);
-//         fCorrectionFits.insert_or_assign(time, this->GetCorrectionFit(time));
-
-//         time = V.TEMAT->GetXaxis()->GetBinCenter((int)time_index + 1) - step;
-//         while (time > V.TEMAT->GetXaxis()->GetBinLowEdge((int)time_index + 1))
-//         {
-//             fCorrectionFits.insert_or_assign(time, this->GetCorrectionFit(time));
-//             time -= step;
-//         }
-
-//         time = V.TEMAT->GetXaxis()->GetBinCenter((int)time_index + 1) + step;
-
-//         while (time < V.TEMAT->GetXaxis()->GetBinUpEdge((int)time_index + 1))
-//         {
-//             fCorrectionFits.insert_or_assign(time, this->GetCorrectionFit(time));
-//             time += step;
-//         }
-//     }
-//     fFitDone = true;
-// }
 
 void TEC::CCM::CalculateCorrectionFits(int time_subdivision)
 {
@@ -905,7 +863,7 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix(const TH2 *input_mat)
         }
         if (strcmp(fcn->GetName(), "EMPTY_FUNCTION") == 0)
         {
-            std::cout << "Using empty function for time bin " << time_bin << std::endl;
+            // std::cout << "Using empty function for time bin " << time_bin << std::endl;
             continue;
         }
         for (unsigned int i = 0; i < fit.coef.size(); i++)
@@ -1341,8 +1299,6 @@ std::unique_ptr<TGraph> TEC::CCM::GetDotProductGraph(const size_t roi_index,
     gr->SetTitle(Form("Dot product graph for ROI %i, time bin %i", roi_index, time_bin));
     gr->GetXaxis()->SetTitle(
         Form("Bin shift of ROI %i at time bin %i", roi_index, time_bin));
-
-    std::cout << "Sum of dot product vector: " << sum << std::endl;
     return gr;
 }
 
