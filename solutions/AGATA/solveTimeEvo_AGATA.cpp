@@ -52,10 +52,11 @@ using namespace TEC;
 #include <vector>
 
 // global parameters used in grid search
-const std::vector<int>    gRebinX{1, 2, 4};
-const std::vector<int>    gRebinY{1, 2, 4, 8};
-const std::vector<double> gSmooth_param_lowess{.2, .4, .6, .8, 1.0};
-const std::vector<double> gSmooth_param_others{1, 5, 10, 20, 50, 100, 200};
+const std::vector<int> gRebinX{1};
+const std::vector<int> gRebinY{1};
+// const std::vector<double> gSmooth_param_lowess{.2, .4, .6, .8, 1.0};
+// const std::vector<double> gSmooth_param_others{1, 2, 5, 10, 20, 50, 100, 200};
+const std::vector<double> gSmooth_param_others{1, 2, 5};
 
 // Global variables for input parameters
 std::string        gCRYSTAL = "";
@@ -73,16 +74,46 @@ std::vector<int>   gCHAIN_RUNS;
 
 const double MINUTES_TO_TIMESTAMPS = 6.0e9;
 
-void write_timeevo_agata_file(std::shared_ptr<CCM> corrections,
-                              const std::string    fname             = "TimeEvoCC.conf",
-                              int                  seconds_per_point = 30)
+void adjust_peak_energy(std::shared_ptr<TH2> TEMAT, std::vector<float> &peak_array)
+
+{
+    TEMAT->GetXaxis()->SetRange(1, TEMAT->GetXaxis()->GetNbins());
+    TEMAT->GetYaxis()->SetRange(1, TEMAT->GetYaxis()->GetNbins());
+    if (peak_array.size() < 3)
+    {
+        std::cerr
+            << "Error: Peak array must contain at least 3 elements (position, min, max)."
+            << std::endl;
+        return;
+    }
+    std::unique_ptr<TH1> proj(
+        TEMAT->ProjectionY(Form("adjust_roi_energy_%f", peak_array.at(0)),
+                           TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(0)),
+                           TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(1))));
+    proj->SetDirectory(0);
+    proj->GetXaxis()->SetRangeUser(peak_array.at(1), peak_array.at(2));
+    auto mean = proj->GetMean();
+
+    // std::cout << peak_array.at(1) << " " << peak_array.at(2) << " " << mean <<
+    // std::endl; TApplication app("app", nullptr, nullptr); proj->Draw(); new
+    //  TCanvas(); TEMAT->Draw(); std::cout << gREFERENCE_TIME.at(0) << " " <<
+    //  gREFERENCE_TIME.at(1) << std::endl; app.Run();
+
+    TheuerkaufFitter fitter(peak_array.at(1), peak_array.at(2));
+    fitter.AddPeak(mean, true, false, false);
+
+    fitter.Fit(proj.get(), "OUTPUT_NONE");
+    peak_array.at(0) = fitter.GetPeak(0)->GetPos();
+}
+
+void write_timeevo_agata_format(std::shared_ptr<CCM> corrections,
+                                std::string          fname = "TimeEvoCC.conf")
 {
     assert(!fname.empty());
-    assert(seconds_per_point > 0);
     std::ofstream file(fname);
     if (!file.is_open())
     {
-        std::cerr << "Error opening file: " << fname << std::endl;
+        std::cerr << "Error opening output file: " << fname << std::endl;
         return;
     }
 
@@ -93,7 +124,6 @@ void write_timeevo_agata_file(std::shared_ptr<CCM> corrections,
     const double time_low_edge = matrix->GetXaxis()->GetBinLowEdge(1);
     const double time_up_edge =
         matrix->GetXaxis()->GetBinUpEdge(matrix->GetXaxis()->GetNbins());
-    const double step = (double)seconds_per_point / 60.;
 
     double TS_start, TS_end;
     double gain;
@@ -104,16 +134,13 @@ void write_timeevo_agata_file(std::shared_ptr<CCM> corrections,
          << std::setw(22) << "gain"
          << "\n";
 
-    TS_start = time_low_edge;
-    TS_end   = TS_start + step;
-
-    // std::cout << "TS_start: " << TS_start << " TS_end: " << TS_end << std::endl;
-    // std::cout << "Time low edge: " << time_low_edge << std::endl;
-    // std::cout << "Time up edge: " << time_up_edge << std::endl;
-
-    while (TS_end < time_up_edge)
+    for (int bin = 1; bin < matrix->GetXaxis()->GetNbins(); bin++)
     {
-        time           = (double)TS_start + step / 2.0;
+        TS_start = matrix->GetXaxis()->GetBinLowEdge(bin);
+        TS_end   = matrix->GetXaxis()->GetBinUpEdge(bin);
+
+        time = matrix->GetXaxis()->GetBinCenter(bin);
+
         const auto fit = corrections->GetCorrectionFit(time);
 
         if (fit.coef.size() != 1)
@@ -128,11 +155,8 @@ void write_timeevo_agata_file(std::shared_ptr<CCM> corrections,
             file << std::fixed << std::setprecision(0) << std::setw(22)
                  << (Long64_t)(TS_start * MINUTES_TO_TIMESTAMPS) << std::setw(22)
                  << (Long64_t)(TS_end * MINUTES_TO_TIMESTAMPS) << std::fixed
-                 << std::setprecision(6) << std::setw(22) << fit.coef.front() << "\n";
+                 << std::setprecision(10) << std::setw(22) << fit.coef.front() << "\n";
         }
-
-        TS_start += step;
-        TS_end += step;
     }
 
     file.close();
@@ -156,7 +180,8 @@ struct ccm_settings
         os << std::setw(10) << "Cost" << std::setw(8) << "RebX" << std::setw(8) << "RebY"
            << std::setw(12) << "Gaussian" << std::setw(10) << "Valid" << std::setw(20)
            << "InterpType" << std::setw(12) << "Smoothing" << std::setw(15)
-           << "SmootherType" << std::setw(12) << "SmoothPar" << std::setw(12) << "\n";
+           << "SmootherType" << std::setw(12) << "SmoothPar" << std::setw(12)
+           << std::endl;
     }
 
     void print_values(std::ostream &os = std::cout) const
@@ -175,7 +200,7 @@ struct ccm_settings
            << std::boolalpha << this->use_gaussian << std::setw(10) << this->valid_only
            << std::setw(20) << this->interpolator_type << std::setw(12)
            << this->interpolator_smoothing << std::setw(15) << smoother_type_str
-           << std::setw(12) << std::setprecision(5) << this->smoother_par << "\n";
+           << std::setw(12) << std::setprecision(5) << this->smoother_par << std::endl;
     }
 };
 
@@ -254,7 +279,7 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
         ccm_fix->SmoothShifts(settings.smoother_type, settings.smoother_par);
     }
 
-    write_timeevo_agata_file(ccm_fix, output_conffilename, 30);
+    write_timeevo_agata_format(ccm_fix, output_conffilename);
 
     {
         std::ostringstream oss;
@@ -318,23 +343,23 @@ std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2> origina
         if (use_gaussian) { ccm_fix->UseGaussianResult(); }
         else { ccm_fix->UsePolynomialResult(); }
 
-        {
-            settings.interpolator_smoothing = false;
-            settings.interpolator_type      = "";
-            settings.smoother_type          = TEC::SmootherType::NONE;
-            settings.smoother_par           = -1.;
-            ccm_fix->DisableInterpolation();
+        // {
+        //     settings.interpolator_smoothing = false;
+        //     settings.interpolator_type      = "";
+        //     settings.smoother_type          = TEC::SmootherType::NONE;
+        //     settings.smoother_par           = -1.;
+        //     ccm_fix->DisableInterpolation();
 
-            auto        TEMAT_fixed = ccm_fix->FixMatrix(original_TEMAT.get());
-            std::string proj_name   = "projY_" + get_pointer_string(TEMAT_fixed.get());
-            TH1        *proj        = TEMAT_fixed->ProjectionY(proj_name.c_str());
-            proj->SetDirectory(0);
-            double cost   = costFcn(proj);
-            settings.cost = cost;
-            settings.print_values(std::cout);
-            results.emplace_back(settings);
-            delete proj;
-        }
+        //     auto        TEMAT_fixed = ccm_fix->FixMatrix(original_TEMAT.get());
+        //     std::string proj_name   = "projY_" +
+        //     get_pointer_string(TEMAT_fixed.get()); TH1        *proj        =
+        //     TEMAT_fixed->ProjectionY(proj_name.c_str()); proj->SetDirectory(0);
+        //     double cost   = costFcn(proj);
+        //     settings.cost = cost;
+        //     settings.print_values(std::cout);
+        //     results.emplace_back(settings);
+        //     delete proj;
+        // }
 
         {
             settings.interpolator_smoothing = false;
@@ -380,13 +405,15 @@ std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2> origina
         //     delete proj;
         // }
 
-        for (const auto smoother : {TEC::SmootherType::KERNEL, TEC::SmootherType::LOWESS,
-                                    TEC::SmootherType::SUPER})
+        // for (const auto smoother : {TEC::SmootherType::KERNEL,
+        // TEC::SmootherType::LOWESS,
+        //                             TEC::SmootherType::SUPER})
+        for (const auto smoother : {TEC::SmootherType::SUPER})
         {
             std::vector<double> smooth_param;
             if (smoother == TEC::SmootherType::LOWESS)
             {
-                smooth_param = gSmooth_param_lowess;
+                // smooth_param = gSmooth_param_lowess;
             }
             else { smooth_param = gSmooth_param_others; }
 
@@ -429,13 +456,20 @@ std::vector<ccm_settings> ccm_optimizer_global(
         for (const int rebinY : gRebinY)
         {
             s.temat_rebin_y = rebinY;
+            std::shared_ptr<TH2> rTEMAT;
+            if (rebinX == 1 && rebinY == 1) { rTEMAT = TEMAT; }
+            else
+            {
+                rTEMAT = std::shared_ptr<TH2>(
+                    TEMAT->Rebin2D(s.temat_rebin_x, s.temat_rebin_y,
+                                   Form("%%s_rebin_%ix_%iy", TEMAT->GetName(),
+                                        s.temat_rebin_x, s.temat_rebin_y)));
+            }
 
-            auto mr = TEMAT->Rebin2D(s.temat_rebin_x, s.temat_rebin_y,
-                                     Form("%%s_rebin_%ix_%iy", TEMAT->GetName(),
-                                          s.temat_rebin_x, s.temat_rebin_y));
-
-            if (!mr) { throw std::runtime_error("Error: Rebinning TEMAT failed!"); }
-            std::shared_ptr<TH2> rTEMAT = std::shared_ptr<TH2>(mr);
+            if (rTEMAT.get() == nullptr)
+            {
+                throw std::runtime_error("Error: Rebinning TEMAT failed!");
+            }
 
             std::vector<RegionOfInterest> ROIs;
             ROIs.emplace_back(RegionOfInterest(rTEMAT, gROIarr.at(1), gROIarr.at(2),
@@ -457,7 +491,6 @@ std::vector<ccm_settings> ccm_optimizer_global(
 // Function to print help message
 void print_help()
 {
-
     std::cout << "Usage: program [OPTIONS]\n\n"
               << "Options:\n";
     std::cout << "  --help                     Display this help message "
@@ -478,9 +511,9 @@ void print_help()
                  "maximum of <5> to "
                  "the RIGHT\n";
 
-    std::cout
-        << "  --ROIsource <1>            Define ROI for calibration sources. Currently "
-           "recognized are: 60Co, 66Ga, 133Ba, 226Ra \n";
+    std::cout << "  --ROIsource <1>            Define ROI for calibration sources. "
+                 "Currently "
+                 "recognized are: 60Co, 66Ga, 133Ba, 226Ra \n";
     std::cout << "  --ref_time <1> <2>         Specify the reference time "
                  "interval \n";
     std::cout << "  --fit_peak <1> <2> <3>     If running in minimization "
@@ -502,21 +535,23 @@ void print_help()
     std::cout << "  --rootfile <1>             Specify the root file "
                  "name\n";
     std::cout << "  --matrix <1>               Specify the matrix name \n";
-    std::cout
-        << "  --super_settings           Run corrections with hardcoded parameters \n";
-    // std::cout << "  --reference_other_run <1>  If you want to use the reference/sample
+    std::cout << "  --super_settings           Run corrections with hardcoded "
+                 "parameters \n";
+    // std::cout << "  --reference_other_run <1>  If you want to use the
+    // reference/sample
     // "
     //              "vector from a previous run.\n";
-    std::cout
-        << "  --chain_runs <1> [...]     Specify the runs that are going to use the same "
-           "reference vector as defined for --run\n";
+    std::cout << "  --chain_runs <1> [...]     Specify the runs that are going to "
+                 "use the same "
+                 "reference vector as defined for --run\n";
     std::cout << std::endl << std::endl;
 }
 
 void set_reference_vector(const int ref_run, const int run)
 {
     // std::string reference_root_file = "Out/run_" + fourCharInt(ref_run) + "/out_" +
-    //                                   fourCharInt(ref_run) + "_" + gCRYSTAL + ".root";
+    //                                   fourCharInt(ref_run) + "_" + gCRYSTAL +
+    //                                   ".root";
     std::string reference_root_file = get_rootfilename(gDIR, ref_run, gCRYSTAL);
 
     TFile *matfile = TFile::Open(reference_root_file.c_str(), "READ");
@@ -725,7 +760,8 @@ void run_chained_runs(const ccm_settings &optimal_settings)
     for (const auto c_run : gCHAIN_RUNS)
     {
 
-        // std::string c_rootfile = "run_" + fourCharInt(c_run) + "/Out/TimeEvo/out_" +
+        // std::string c_rootfile = "run_" + fourCharInt(c_run) + "/Out/TimeEvo/out_"
+        // +
         //                          fourCharInt(c_run) + "_" + gCRYSTAL + ".root";
 
         std::string c_rootfile = get_rootfilename(gDIR, c_run, gCRYSTAL);
@@ -772,14 +808,19 @@ int main(int argc, char **argv)
                                  " matrix");
     }
 
+    adjust_peak_energy(TEMAT_original, gROIarr);
+    std::cout << "Adjusted ROI energy to: " << gROIarr.at(0) << std::endl;
+    if (gFIT_PEAK.size() == 3) { adjust_peak_energy(TEMAT_original, gFIT_PEAK); }
+    std::cout << "Adjusted cost peak energy to: " << gFIT_PEAK.at(0) << std::endl;
+
     if (gUSE_SUPER_SETTINGS)
     {
-        gSUPER_SETTINGS.temat_rebin_x = 2;
-        gSUPER_SETTINGS.temat_rebin_y = 2;
-        gSUPER_SETTINGS.use_gaussian  = true;
+        gSUPER_SETTINGS.temat_rebin_x = 1;
+        gSUPER_SETTINGS.temat_rebin_y = 1;
+        gSUPER_SETTINGS.use_gaussian  = false;
         gSUPER_SETTINGS.valid_only    = true;
         // gSUPER_SETTINGS.interpolator_type      = "akima";
-        gSUPER_SETTINGS.interpolator_type      = "";
+        gSUPER_SETTINGS.interpolator_type      = "akima";
         gSUPER_SETTINGS.interpolator_smoothing = false;
         gSUPER_SETTINGS.smoother_type          = TEC::SmootherType::NONE;
         gSUPER_SETTINGS.smoother_par           = -1;
@@ -811,12 +852,13 @@ int main(int argc, char **argv)
     ccm_settings::print_header(std::cout);
     for (const auto &r : result) { r.print_values(std::cout); }
 
-    std::string minimization_file = gDIR + "/diagnostics/" + "CCMconf_r" +
+    std::string minimization_file = gDIR + "/diagnostic/" + "CCMconf_r" +
                                     std::to_string(gRUN) + "_" + gCRYSTAL + ".txt";
     std::fstream out_file(minimization_file.c_str(), std::ios::out);
     if (!out_file)
     {
-        std::cerr << "Error opening CCM conf file for writing." << std::endl;
+        std::cerr << "Error opening CCM conf file: " << minimization_file
+                  << "  for writing" << std::endl;
     }
     ccm_settings::print_header(out_file);
     for (const auto &r : result) { r.print_values(out_file); }
