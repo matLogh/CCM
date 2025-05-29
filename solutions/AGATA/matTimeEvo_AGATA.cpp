@@ -163,11 +163,11 @@ int CoresTimeEvo(int                 runNr,
             if (it != crystalIds.end())
             {
                 int index = std::distance(crystalIds.begin(), it);
-                timeEvoMatrices[index]->Fill(coreTS[n] * 1e-8 / 60.0, coreE0[n]);
+                timeEvoMatrices[index]->Fill(coreTS[n] * 1.e-8 / 60.0, coreE0[n]);
             }
         }
 
-        // Print progress every 20000 entries or if verbose_level is high
+        // Print progress every X entries
         if (entry % 1000000 == 0)
         {
             auto   current_time    = std::chrono::steady_clock::now();

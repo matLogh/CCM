@@ -155,7 +155,8 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
     }
     else if (source.compare("152eu") == 0 || source.compare("eu152") == 0)
     {
-        throw std::runtime_error("152Eu source is not implemented yet");
+        ROI      = {1408.013, 1378., 1438., -40, 40};
+        fit_peak = {1528.10, 1498, 1558};
     }
     else if (source.compare("226ra") == 0 || source.compare("ra226") == 0)
     {
@@ -165,7 +166,7 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
     }
     else if (source.compare("66ga") == 0 || source.compare("ga66") == 0)
     {
-        ROI      = {2751.835, 2720., 2780., -50, 50};
+        ROI      = {2751.835, 2720., 2780., -90, 50};
         fit_peak = {4295.187, 4220., 4360.};
     }
     else if (source.compare("56co") == 0 || source.compare("co56") == 0)

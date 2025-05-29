@@ -92,22 +92,19 @@ std::array<float, 2> get_ref_time(std::shared_ptr<TH2> TEMAT)
 
     int nbinsX = TEMAT->GetNbinsX();
     int nbinsY = TEMAT->GetNbinsY();
-    for (int start_bin = nbinsX / 4; start_bin < nbinsX - bin_window_width; start_bin++)
+    for (int start_bin = nbinsX / 3; start_bin < nbinsX - bin_window_width; start_bin++)
     {
-        auto one_bin_integral = TEMAT->Integral(start_bin, start_bin + 1, 1, nbinsY);
-        auto width_integral =
-            TEMAT->Integral(start_bin, start_bin + bin_window_width, 1, nbinsY);
+        auto one_bin_integral = TEMAT->Integral(
+            start_bin, start_bin, TEMAT->GetYaxis()->FindBin(gROIarr.at(1)),
+            TEMAT->GetYaxis()->FindBin(gROIarr.at(2)));
+        auto width_integral = TEMAT->Integral(start_bin, start_bin + bin_window_width,
+                                              TEMAT->GetYaxis()->FindBin(gROIarr.at(1)),
+                                              TEMAT->GetYaxis()->FindBin(gROIarr.at(2)));
 
         // lets make sure that there are some events in the time bin and if the width
         // contain at least the same amount of events
         if (one_bin_integral > 0 &&
-            width_integral / bin_window_width * 1.2 > one_bin_integral)
-        {
-            ref_time.at(0) = TEMAT->GetXaxis()->GetBinLowEdge(start_bin);
-            ref_time.at(1) =
-                TEMAT->GetXaxis()->GetBinUpEdge(start_bin + bin_window_width);
-            break;
-        }
+            width_integral / (double)bin_window_width * 0.9 > one_bin_integral)
         {
             ref_time.at(0) = TEMAT->GetXaxis()->GetBinLowEdge(start_bin);
             ref_time.at(1) =
@@ -123,7 +120,7 @@ bool detect_time_evolution(std::shared_ptr<TH2> temat,
                            std::vector<float>  &over_threshold_values)
 {
 
-    std::shared_ptr<TH2> TEMAT(temat->Rebin2D(2, 2, Form("%s_rebin", temat->GetName())));
+    std::shared_ptr<TH2> TEMAT(temat->Rebin2D(1, 1, Form("%s_rebin", temat->GetName())));
     TEMAT->SetDirectory(0);
     auto ref_time = get_ref_time(TEMAT);
     if (ref_time.at(0) < 0 || ref_time.at(1) < 0)
@@ -172,6 +169,8 @@ bool detect_time_evolution(std::shared_ptr<TH2> temat,
             auto gr = ccm.GetROIShifts(0, false);
             gr->GetXaxis()->SetRangeUser(_m->GetXaxis()->GetXmin(),
                                          _m->GetXaxis()->GetXmax());
+            gr->SetMarkerColor(kRed);
+            gr->SetMarkerStyle(20);
             gr->Draw("ALP");
 
             guiObjects.emplace_back(gr.release());
@@ -434,6 +433,11 @@ int main(int argc, char **argv)
             std::cout << " " << suspects.second;
         }
         std::cout << std::endl;
+    }
+    else
+    {
+        std::cout << "No TimeEvolution detected above threshold " << gSHIFTTHRESHOLD
+                  << std::endl;
     }
     if (guiObjects.size() != 0) { app.Run(); }
 
