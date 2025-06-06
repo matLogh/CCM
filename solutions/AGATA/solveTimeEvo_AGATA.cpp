@@ -23,7 +23,7 @@
 // #include "CheckCCM.h"
 #include "Cross_correlation.h"
 #include "RegionOfInterest.h"
-#include "TheuerkaufPeak.hpp"
+#include "TheuerkaufPeak.h"
 #include "variables.h"
 #include <thread>
 
@@ -95,9 +95,7 @@ void adjust_peak_energy(std::shared_ptr<TH2> TEMAT, std::vector<float> &peak_arr
     auto mean = proj->GetMean();
 
     // std::cout << peak_array.at(1) << " " << peak_array.at(2) << " " << mean <<
-    // std::endl; TApplication app("app", nullptr, nullptr); proj->Draw(); new
-    //  TCanvas(); TEMAT->Draw(); std::cout << gREFERENCE_TIME.at(0) << " " <<
-    //  gREFERENCE_TIME.at(1) << std::endl; app.Run();
+    // std::endl;
 
     TheuerkaufFitter fitter(peak_array.at(1), peak_array.at(2));
     fitter.AddPeak(mean, true, false, false);
