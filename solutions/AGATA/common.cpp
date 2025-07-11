@@ -150,8 +150,9 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
     }
     else if (source.compare("133ba") == 0 || source.compare("ba133") == 0)
     {
-        ROI      = {356.012, 340., 370., -10, 10};
-        fit_peak = {302.85, 290., 310.};
+        ROI = {383.95, 365, 400., -15, 15};
+        // fit_peak = {356.012, 340., 370};
+        fit_peak = {2614, 2550., 2650};
     }
     else if (source.compare("152eu") == 0 || source.compare("eu152") == 0)
     {
@@ -161,8 +162,10 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
     else if (source.compare("226ra") == 0 || source.compare("ra226") == 0)
     {
         // decay of 214Bi
-        ROI      = {1764.491, 1720, 1780, -50, 50};
-        fit_peak = {2204.1, 2150., 2250.};
+        ROI      = {2204.1, 2150., 2250., -50, 50};
+        fit_peak = {2447.69, 2400, 2500};
+        // ROI      = {1764.491, 1720, 1780, -50, 50};
+        // fit_peak = {2204.1, 2150., 2250.};
     }
     else if (source.compare("66ga") == 0 || source.compare("ga66") == 0)
     {
@@ -201,3 +204,5 @@ std::string get_rootfilename(const std::string &dir,
 {
     return dir + "/temat_" + fourCharInt(run) + "_" + crystal + ".root";
 }
+
+std::string get_matrixname(const std::string &crystal) { return "hE0_TS_" + crystal; }
