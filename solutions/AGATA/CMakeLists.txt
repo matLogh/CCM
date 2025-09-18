@@ -15,3 +15,7 @@ set_target_properties(detectTimeEvo PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_
 add_executable(simple_AGATA simple_agata.cpp)
 target_link_libraries(simple_AGATA  ${ROOT_LIBRARIES} ccm)
 set_target_properties(simple_AGATA PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(checkValidation checkValidation.cxx)
+target_link_libraries(checkValidation  ${ROOT_LIBRARIES})
+set_target_properties(checkValidation PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
