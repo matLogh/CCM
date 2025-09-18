@@ -104,14 +104,30 @@ void draw_cuts(std::shared_ptr<TH2>                          temat,
 
 double calculate_total_duration(const std::vector<std::pair<double, double>> &cut_times)
 {
-    if (cut_times.size() <= 2) return 0;
     double total_duration = 0.0;
-    for (int i = 1; i < cut_times.size() - 1; i++)
-    {
-        total_duration += (cut_times[i].second - cut_times[i].first);
-    }
-    // for (const auto &cut : cut_times) { total_duration += (cut.second - cut.first); }
+    for (const auto &cut : cut_times) { total_duration += (cut.second - cut.first); }
     return total_duration;
+}
+
+double calculate_run_duration(const std::shared_ptr<TH2> temat)
+{
+    const int nbinsx = temat->GetXaxis()->GetNbins();
+    if (nbinsx <= 1) return 0.0;
+
+    double first_time = temat->GetXaxis()->GetBinLowEdge(1);
+    double last_time  = temat->GetXaxis()->GetBinUpEdge(nbinsx);
+
+    return last_time - first_time;
+}
+
+double calculate_cut_padding(const std::vector<std::pair<double, double>> &cut_times)
+{
+    if (cut_times.size() < 2) return 0.0;
+    double padding = 0.0;
+    padding += (cut_times.front().second - cut_times.front().first);
+    padding += (cut_times.back().second - cut_times.back().first);
+
+    return padding;
 }
 
 std::vector<std::pair<double, double>> checkValidation(
@@ -285,6 +301,7 @@ void parse_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
+
     parse_args(argc, argv);
     TApplication app("app", 0, 0);
 
@@ -313,10 +330,25 @@ int main(int argc, char **argv)
             {
                 if (gSUMMARIZE_DURATION)
                 {
-                    double total_duration = calculate_total_duration(cut_times);
-                    std::cout << "Run " << run << " Crystal " << crystal << ":  "
-                              << std::fixed << std::setprecision(2)
-                              << total_duration * 60. << " seconds" << std::endl;
+                    double missing_duration   = calculate_total_duration(cut_times);
+                    double total_run_duration = calculate_run_duration(TEMAT_original);
+                    double padding_duration   = calculate_cut_padding(cut_times);
+                    missing_duration -= padding_duration;
+                    total_run_duration -= padding_duration;
+
+                    // to seconds
+                    missing_duration *= 60.0;
+                    total_run_duration *= 60.0;
+
+                    double percentage =
+                        (total_run_duration > 0)
+                            ? (missing_duration / total_run_duration) * 100.0
+                            : 0.0;
+
+                    std::cout << "Run " << run << " cry " << crystal << " " << std::fixed
+                              << std::setprecision(2) << missing_duration << " s "
+                              << total_run_duration << " s " << percentage << "%"
+                              << std::endl;
                 }
                 else
                 {
