@@ -104,8 +104,13 @@ void draw_cuts(std::shared_ptr<TH2>                          temat,
 
 double calculate_total_duration(const std::vector<std::pair<double, double>> &cut_times)
 {
+    if (cut_times.size() <= 2) return 0;
     double total_duration = 0.0;
-    for (const auto &cut : cut_times) { total_duration += (cut.second - cut.first); }
+    for (int i = 1; i < cut_times.size() - 1; i++)
+    {
+        total_duration += (cut_times[i].second - cut_times[i].first);
+    }
+    // for (const auto &cut : cut_times) { total_duration += (cut.second - cut.first); }
     return total_duration;
 }
 
@@ -174,6 +179,8 @@ void print_help()
               << "  --crys <crystal>         Specify crystal(s) (can be repeated)\n"
               << "  --allcrys                Use all crystals\n"
               << "  --dir <directory>        Specify data directory\n"
+              << "  --summarize              Show only total duration of missing "
+                 "validation windows\n"
               << "  --help, -h               Show this help message\n";
     exit(0);
 }
@@ -244,6 +251,7 @@ void parse_args(int argc, char **argv)
             if (i + 1 < argc) { gDIR = argv[++i]; }
             else { throw std::invalid_argument("Missing value for --dir"); }
         }
+        else if (arg == "--summarize") { gSUMMARIZE_DURATION = true; }
 
         else
         {
@@ -303,12 +311,23 @@ int main(int argc, char **argv)
             auto cut_times = checkValidation(TEMAT_original, 0.5);
             if (cut_times.size() > gMINIMUM_NUMBER_OF_HOLES_TO_IGNORE)
             {
-                std::cout << "Found validation " << cut_times.size() << " holes for run "
-                          << run << " crystal " << crystal << ": " << std::endl;
-                draw_cuts(TEMAT_original, cut_times);
+                if (gSUMMARIZE_DURATION)
+                {
+                    double total_duration = calculate_total_duration(cut_times);
+                    std::cout << "Run " << run << " Crystal " << crystal << ":  "
+                              << std::fixed << std::setprecision(2)
+                              << total_duration * 60. << " seconds" << std::endl;
+                }
+                else
+                {
+                    std::cout << "Found validation " << cut_times.size()
+                              << " holes for run " << run << " crystal " << crystal
+                              << ": " << std::endl;
+                    draw_cuts(TEMAT_original, cut_times);
+                }
             }
         }
     }
-    if (!gROOTOBJECTS.empty()) { app.Run(); }
+    if (!gROOTOBJECTS.empty() && !gSUMMARIZE_DURATION) { app.Run(); }
     return 0;
 }
