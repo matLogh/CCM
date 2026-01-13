@@ -29,9 +29,9 @@ using namespace TEC;
 #define DATA_PATH ""
 #endif
 
-int    bins       = 1000;
-double time_start = 22E12;
-double time_end   = 50E12;
+// int    bins       = 1000;
+// double time_start = 22E12;
+// double time_end   = 50E12;
 
 double reference_time_bgn = 1300;
 double reference_time_end = 1320;
@@ -52,14 +52,14 @@ int main(int argc, char **argv)
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
-    TF1 fcn("gain_fcn", "[0]*x", 0, 1);
+    TF1 correction_fcn("gain_fcn", "[0]*x", 0, 1);
 
     std::vector<RegionOfInterest> ROIs;
     ROIs.emplace_back(RegionOfInterest(TEMAT, 1445., 1475., -35., 25., 1462.));
 
     // create CCM object
     CCM fix(TEMAT, ROIs, reference_time_bgn, reference_time_end);
-    fix.SetCorrectionFunction(fcn, "");
+    fix.SetCorrectionFunction(correction_fcn, "");
     fix.CalculateEnergyShifts(8);
     fix.CalculateCorrectionFits();
     auto TEMAT_fixed = fix.FixMatrix();
