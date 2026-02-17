@@ -14,6 +14,17 @@
 
 using namespace std;
 
+struct user_config
+{
+    int                      run;
+    Long64_t                 maxentries;
+    std::vector<std::string> crystals;
+    int                      number_of_seconds_per_bin;
+    std::string              outDir;
+    std::string              replayDir;
+    std::vector<double>      energy_binning{};
+};
+
 std::vector<double> gENERGY_BINING{};
 
 #include <filesystem>
@@ -35,6 +46,172 @@ void createDirectoryIfNotExists(const std::string &path)
     // else { std::cout << "Directory already exists: " << path << std::endl; }
 }
 
+int SegmentsTimeEvo(int              runNr,
+                    std::string      crystal,
+                    std::vector<int> segments,
+                    int              seconds_per_bin,
+                    ULong64_t        maxEntries = 0,
+                    std::string      outDir     = "",
+                    std::string      replayDir  = "")
+{
+
+    string inFilePattern;
+    if (replayDir.empty())
+        inFilePattern = "run_" + fourCharInt(runNr) + "/Out/Analysis" + "/Tree_";
+    else
+        inFilePattern = replayDir + "/Tree_";
+    // string outDirName    = "run_" + fourCharInt(runNr) + "/TimeEvo";
+    string outDirName = "timeEvo";
+    if (!outDir.empty()) outDirName = outDir;
+    if (outDirName.back() == '/') outDirName.pop_back();
+
+    createDirectoryIfNotExists(outDirName);
+
+    int crystalId = get_crystal_id(crystal);
+    std::cout << "Crystal: " << crystal << "\tID: " << crystalId << std::endl;
+
+    std::cout << "\n";
+    std::cout << "input file pattern: " << inFilePattern << std::endl;
+    std::cout << "output directory: " << outDirName << std::endl;
+
+    TChain *tree = new TChain(("TreeMaster"));
+    tree->Add((inFilePattern + "*.root").c_str());
+
+    ULong64_t TotalNumberOfEntries = tree->GetEntries();
+    if (maxEntries != 0) TotalNumberOfEntries = maxEntries;
+
+    ULong64_t minTS = 0;
+    ULong64_t maxTS = 0;
+
+    // Get the first and last TS
+    std::array<ULong64_t, 100> hitTS;
+    std::array<Float_t, 100>   hitE;
+    std::array<int, 100>       hitId;
+    std::array<int, 100>       hitSg;
+    int                        nbhits;
+
+    tree->SetBranchAddress("TSHit", hitTS.data());
+    tree->SetBranchAddress("hitE", hitE.data());
+    tree->SetBranchAddress("hitId", hitId.data());
+    tree->SetBranchAddress("hitSg", hitSg.data());
+    tree->SetBranchAddress("nbHits", &nbhits);
+
+    tree->SetBranchStatus("*", false);
+    tree->SetBranchStatus("TSHit", true);
+    tree->SetBranchStatus("hitE", true);
+    tree->SetBranchStatus("hitId", true);
+    tree->SetBranchStatus("hitSg", true);
+    tree->SetBranchStatus("nbHits", true);
+
+    // find min/max TS
+    Long64_t index = 0;
+    while (minTS == 0 && index < TotalNumberOfEntries)
+    {
+        tree->GetEntry(index);
+        index++;
+        if (nbhits == 0) continue;
+        minTS = hitTS[0];
+    }
+    if (minTS == 0)
+    {
+        std::cout << "\nRun is empty\n" << std::endl;
+        return 1;
+    }
+
+    index = TotalNumberOfEntries - 1;
+    while (maxTS == 0 && index >= 0)
+    {
+        tree->GetEntry(index);
+        index--;
+        if (nbhits == 0) continue;
+        maxTS = hitTS[0];
+    }
+    if (maxTS == 0)
+    {
+        std::cout << "\nRun is empty\n" << std::endl;
+        return -1;
+    }
+
+    std::cout << "minTS: " << minTS << "\n";
+    std::cout << "maxTS: " << maxTS << std::endl;
+
+    // allocate matrices
+    Long64_t minTime   = Long64_t(minTS * 1e-8) / 60. - 10;
+    Long64_t maxTime   = Long64_t(maxTS * 1e-8) / 60. + 10;
+    int      nTimeBins = (maxTime - minTime) * 60 / seconds_per_bin; // 30 seconds per bin
+
+    std::cout << "time binning: " << nTimeBins << "\trange: " << minTime << " " << maxTime
+              << std::endl;
+
+    std::vector<std::shared_ptr<TFile>> root_files;
+
+    std::vector<std::shared_ptr<TH2F>> timeEvoMatrices;
+    for (const auto &seg : segments)
+    {
+        string outFileName = outDirName + "/temat_" + fourCharInt(runNr) + "_" + crystal +
+                             "_seg_" + twoCharInt(seg) + ".root";
+        root_files.emplace_back(std::make_shared<TFile>(outFileName.c_str(), "recreate"));
+
+        std::string mat_name = "hE0_TS_" + crystal + "_seg_" + twoCharInt(seg);
+        timeEvoMatrices.emplace_back(std::make_shared<TH2F>(
+            mat_name.c_str(), mat_name.c_str(), nTimeBins, minTime, maxTime,
+            gENERGY_BINING.at(0), gENERGY_BINING.at(1), gENERGY_BINING.at(2)));
+
+        timeEvoMatrices.back()->SetXTitle("Time [min]");
+        timeEvoMatrices.back()->SetYTitle("Energy [keV]");
+    }
+
+    // sort data
+    for (ULong64_t entry = 0; entry < TotalNumberOfEntries; entry++)
+    {
+        // Start timing the loop
+        static auto start_time = std::chrono::steady_clock::now();
+
+        // Process the entry
+        tree->GetEntry(entry);
+        if (nbhits == 0) continue;
+
+        for (int n = 0; n < nbhits; n++)
+        {
+            if (hitId[n] != crystalId) continue;
+            auto it = std::find(segments.begin(), segments.end(), hitSg[n]);
+            if (it != segments.end())
+            {
+                int index = std::distance(segments.begin(), it);
+                timeEvoMatrices[index]->Fill(hitTS[n] * 1.e-8 / 60.0, hitE[n]);
+            }
+        }
+
+        // Print progress every X entries
+        if (entry % 1000000 == 0)
+        {
+            auto   current_time    = std::chrono::steady_clock::now();
+            double elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+                                         current_time - start_time)
+                                         .count();
+            double progress = static_cast<double>(entry) / TotalNumberOfEntries;
+            double estimated_total_time = elapsed_seconds / progress;
+            int    remaining_time       = estimated_total_time - elapsed_seconds;
+
+            std::cout << "\rProcessed " << entry << " / " << TotalNumberOfEntries << " ("
+                      << (progress * 100.0) << "%)"
+                      << " | Elapsed: " << elapsed_seconds << "s"
+                      << " | Remaining: " << remaining_time
+                      << "s                                         " << std::flush;
+        }
+    }
+    for (int i = 0; i < root_files.size(); i++)
+    {
+        std::cout << "\nWriting matrix for crystal " << crystal << " segment "
+                  << segments[i] << std::endl;
+
+        auto file   = root_files[i];
+        auto hE0_TS = timeEvoMatrices[i];
+        file->cd();
+        hE0_TS->Write();
+    }
+    return 0;
+}
 int CoresTimeEvo(int                 runNr,
                  std::vector<string> crystals,
                  int                 seconds_per_bin,
@@ -208,6 +385,9 @@ void printHelp()
     std::cout << "  --crys <3-letter strings> Specify crystals (can be multiple "
                  "3-character strings)\n";
     std::cout
+        << "  --seg <integers>          Specify segments (can be multiple integers)\n";
+    std::cout << "                            Only possible to use for 1 crystal!\n";
+    std::cout
         << "  --maxentries <integer>    Set the maximum number of entries (optional)\n";
     std::cout << "  --allcrys                 Run for all crystals of EXP_035\n";
     std::cout
@@ -230,6 +410,7 @@ void parseArguments(int                       argc,
                     int                      &run,
                     Long64_t                 &maxEntries,
                     std::vector<std::string> &crystals,
+                    std::vector<int>         &segments,
                     std::string              &outDir,
                     std::string              &replayDir)
 {
@@ -279,6 +460,11 @@ void parseArguments(int                       argc,
                 }
             }
         }
+        else if (arg == "--seg" || arg == "--segment" || arg == "--segments")
+        {
+            auto _segs = parse_space_separated_ints(i, argc, argv);
+            for (const auto &seg : _segs) { segments.emplace_back(seg); }
+        }
         else if (arg == "--allcrys")
         {
             std::vector<std::string> _c = {
@@ -325,13 +511,15 @@ int main(int argc, char **argv)
 
     int                      run;
     Long64_t                 maxentries = 0;
-    std::vector<std::string> crystals;
+    std::vector<std::string> crystals{};
+    std::vector<int>         segments{};
     int                      number_of_seconds_per_bin = 30;
     std::string              outDir{};
     std::string              replayDir{};
+    int                      segmentId = -1; // -1 = core
 
     parseArguments(argc, argv, number_of_seconds_per_bin, run, maxentries, crystals,
-                   outDir, replayDir);
+                   segments, outDir, replayDir);
 
     std::cout << "Parameters used are:" << std::endl;
     std::cout << "Run number:       " << run << std::endl;
@@ -352,6 +540,21 @@ int main(int argc, char **argv)
         std::cerr << "No run number specified. Use --run option." << std::endl;
         return 1;
     }
-    return CoresTimeEvo(run, crystals, number_of_seconds_per_bin, maxentries, outDir,
-                        replayDir);
+    if (segments.size() == 0)
+    {
+        return CoresTimeEvo(run, crystals, number_of_seconds_per_bin, maxentries, outDir,
+                            replayDir);
+    }
+    else
+    {
+        if (crystals.size() > 1)
+        {
+            std::cerr << "Multiple crystals specified. Segments can only be used for 1 "
+                         "crystal. Please specify only 1 crystal when using --seg option."
+                      << std::endl;
+            return 1;
+        }
+        return SegmentsTimeEvo(run, crystals[0], segments, number_of_seconds_per_bin,
+                               maxentries, outDir, replayDir);
+    }
 }
