@@ -19,6 +19,13 @@ std::string fourCharInt(int I)
     return ID.str();
 }
 
+std::string twoCharInt(int I)
+{
+    std::stringstream ID;
+    ID << std::setfill('0') << std::setw(2) << I;
+    return ID.str();
+}
+
 bool can_create_file(const std::string &path)
 {
     try
@@ -109,6 +116,23 @@ std::vector<float> parse_space_separated_floats(int &i, int argc, char **argv, i
             }
         }
         else { throw std::runtime_error("Missing float value for parameter"); }
+    }
+    return result;
+}
+
+std::vector<int> parse_space_separated_ints(int &i, int argc, char **argv)
+{
+    std::vector<int> result;
+    while (i + 1 < argc && std::isdigit(argv[i + 1][0]))
+    {
+        try
+        {
+            result.push_back(std::stoi(argv[++i]));
+        }
+        catch (const std::invalid_argument &)
+        {
+            throw std::runtime_error("Invalid integer value: " + std::string(argv[i]));
+        }
     }
     return result;
 }
