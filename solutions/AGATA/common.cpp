@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -68,8 +69,9 @@ bool can_create_file(const std::string &path)
 
 int get_crystal_id(const std::string &input)
 {
-    if (input.size() != 3 || !isdigit(input[0]) || !isdigit(input[1]) ||
-        !isalpha(input[2]))
+    if (input.size() != 3 || !std::isdigit(static_cast<unsigned char>(input[0])) ||
+        !std::isdigit(static_cast<unsigned char>(input[1])) ||
+        !std::isalpha(static_cast<unsigned char>(input[2])))
     {
         throw std::invalid_argument(
             "Input must be a 3-character string with 2 digits followed by a letter.");
@@ -78,7 +80,8 @@ int get_crystal_id(const std::string &input)
     int number =
         (input[0] - '0') * 10 +
         (input[1] - '0'); // Combine the first two characters into a single integer
-    char letter = std::toupper(input[2]); // Extract the third character as the letter
+    char letter = static_cast<char>(std::toupper(static_cast<unsigned char>(input[2])));
+    // Extract the third character as the letter
 
     int retval = number * 3;
     switch (letter)
@@ -88,7 +91,7 @@ int get_crystal_id(const std::string &input)
     case 'C': retval += 2; break;
     default: throw std::invalid_argument("Invalid letter. Only A, B, or C are allowed.");
     }
-
+    // int number = (input[0] - '0') * 10 + (input[1] - '0'); // Combine
     return retval;
 }
 
@@ -115,7 +118,10 @@ std::vector<float> parse_space_separated_floats(int &i, int argc, char **argv, i
                 throw std::runtime_error("Invalid float value: " + std::string(argv[i]));
             }
         }
-        else { throw std::runtime_error("Missing float value for parameter"); }
+        else
+        {
+            throw std::runtime_error("Missing float value for parameter");
+        }
     }
     return result;
 }
@@ -208,7 +214,10 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
     {
         throw std::runtime_error("Cs-137 source is not implemented yet");
     }
-    else { throw std::runtime_error("Unknown source: " + source); }
+    else
+    {
+        throw std::runtime_error("Unknown source: " + source);
+    }
 }
 
 std::string get_conffilename(const std::string &dir,

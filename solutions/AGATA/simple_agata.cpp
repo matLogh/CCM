@@ -46,7 +46,7 @@ std::shared_ptr<TH2> get_matrix()
 
 int main(int argc, char **argv)
 {
-    TApplication app("app", 0, 0);
+    TApplication app("app", &argc, argv);
 
     high_resolution_clock::time_point t0 = high_resolution_clock::now();
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
@@ -56,9 +56,9 @@ int main(int argc, char **argv)
     {
         std::cout << "Fetching matrix...                                   "
                   << std::flush;
-        TEMAT                                = get_matrix();
-        high_resolution_clock::time_point t2 = high_resolution_clock::now();
-        auto duration = duration_cast<microseconds>(t2 - t1).count();
+        TEMAT = get_matrix();
+        auto duration =
+            duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
         std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
                   << " seconds" << std::endl;
         t1 = high_resolution_clock::now();
@@ -72,11 +72,13 @@ int main(int argc, char **argv)
     // create CCM object
     CCM fix(TEMAT, ROIs, reference_time_bgn, reference_time_end);
     fix.SetCorrectionFunction(fcn, "");
-
-    auto duration =
-        duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
-    std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
-              << " seconds" << std::endl;
+    {
+        auto duration =
+            duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+                  << " seconds" << std::endl;
+        t1 = high_resolution_clock::now();
+    }
 
     {
         std::cout << "Calculating energy shifts...                         "
@@ -203,13 +205,16 @@ int main(int argc, char **argv)
     dot_product->SetMarkerSize(0.5);
     dot_product->Draw("ALP");
 
-    duration = duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
-    std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
-              << " seconds" << std::endl;
-    t1 = high_resolution_clock::now();
+    {
+        auto duration =
+            duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6
+                  << " seconds" << std::endl;
+        t1 = high_resolution_clock::now();
 
-    duration = duration_cast<seconds>(high_resolution_clock::now() - t0).count();
-    std::cout << "\nTOTAL DURATION OF " << duration << " seconds" << std::endl;
+        duration = duration_cast<seconds>(high_resolution_clock::now() - t0).count();
+        std::cout << "\nTOTAL DURATION OF " << duration << " seconds" << std::endl;
+    }
 
     app.Run();
     return 0;

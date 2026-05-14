@@ -24,7 +24,7 @@ using namespace TEC;
 std::vector<int>         gRUNLIST;
 std::vector<std::string> gCRYSTALLIST;
 std::string              gDIR            = "timeEvo";
-float                    gSHIFTTHRESHOLD = 0.5; // keV
+double                   gSHIFTTHRESHOLD = 0.5; // keV
 std::vector<float>       gROIarr;
 bool                     gDrawCanvases = false;
 
@@ -59,14 +59,15 @@ void setup_signal_handling() { std::signal(SIGINT, signal_handler); }
 
 std::array<double, 6> calculate_statistics(const std::vector<float> &values)
 {
-    double mean = std::accumulate(values.begin(), values.end(), 0.0) / values.size();
+    double mean = std::accumulate(values.begin(), values.end(), 0.0) /
+                  static_cast<double>(values.size());
 
     // Standard deviation
     double sq_sum = std::inner_product(values.begin(), values.end(), values.begin(), 0.0);
-    double stdev  = std::sqrt(sq_sum / values.size() - mean * mean);
+    double stdev  = std::sqrt(sq_sum / static_cast<double>(values.size()) - mean * mean);
 
     // RMS
-    double rms = std::sqrt(sq_sum / values.size());
+    double rms = std::sqrt(sq_sum / static_cast<double>(values.size()));
 
     // Max absolute value
     double max_abs =
@@ -79,8 +80,9 @@ std::array<double, 6> calculate_statistics(const std::vector<float> &values)
     double median = sorted[sorted.size() / 2];
 
     double above_threshold =
-        std::count_if(values.begin(), values.end(),
-                      [](double value) { return std::abs(value) > gSHIFTTHRESHOLD; });
+        static_cast<double>(std::count_if(values.begin(), values.end(), [](double value) {
+            return std::abs(value) > gSHIFTTHRESHOLD;
+        }));
 
     return {above_threshold, mean, stdev, rms, max_abs, median};
 }
@@ -91,7 +93,7 @@ std::array<float, 2> get_ref_time(std::shared_ptr<TH2> TEMAT)
     std::array<float, 2> ref_time{-1., -1.};
 
     int nbinsX = TEMAT->GetNbinsX();
-    int nbinsY = TEMAT->GetNbinsY();
+    // int nbinsY = TEMAT->GetNbinsY();
     for (int start_bin = nbinsX / 3; start_bin < nbinsX - bin_window_width; start_bin++)
     {
         auto one_bin_integral = TEMAT->Integral(
@@ -106,9 +108,10 @@ std::array<float, 2> get_ref_time(std::shared_ptr<TH2> TEMAT)
         if (one_bin_integral > 0 &&
             width_integral / (double)bin_window_width * 0.9 > one_bin_integral)
         {
-            ref_time.at(0) = TEMAT->GetXaxis()->GetBinLowEdge(start_bin);
-            ref_time.at(1) =
-                TEMAT->GetXaxis()->GetBinUpEdge(start_bin + bin_window_width);
+            ref_time.at(0) =
+                static_cast<float>(TEMAT->GetXaxis()->GetBinLowEdge(start_bin));
+            ref_time.at(1) = static_cast<float>(
+                TEMAT->GetXaxis()->GetBinUpEdge(start_bin + bin_window_width));
             break;
         }
     }
@@ -138,12 +141,12 @@ bool detect_time_evolution(std::shared_ptr<TH2> temat,
     ccm.CalculateEnergyShifts(8);
 
     over_threshold_values.clear();
-    for (int i = 0; i < ccm.GetNumberOfTimeIndices(); i++)
+    for (std::size_t i = 0; i < ccm.GetNumberOfTimeIndices(); i++)
     {
         auto res = ccm.GetResultContainer(0, i);
         if (res->energy_shift > gSHIFTTHRESHOLD)
         {
-            over_threshold_values.push_back(res->energy_shift);
+            over_threshold_values.push_back(static_cast<float>(res->energy_shift));
         }
     }
 
@@ -257,7 +260,10 @@ void parse_args(int argc, char **argv)
                         "--run must be followed by at least one integer value");
                 }
             }
-            else { throw std::invalid_argument("Missing value for --run"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --run");
+            }
         }
         else if (arg == "--crys" || arg == "--crystal" || arg == "--crystals")
         {
@@ -291,7 +297,10 @@ void parse_args(int argc, char **argv)
         else if (arg == "--dir")
         {
             if (i + 1 < argc) { gDIR = argv[++i]; }
-            else { throw std::invalid_argument("Missing value for --dir"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --dir");
+            }
         }
         else if (arg == "--shift_threshold")
         {
@@ -307,7 +316,10 @@ void parse_args(int argc, char **argv)
                         "Invalid float value for --shift_threshold");
                 }
             }
-            else { throw std::invalid_argument("Missing value for --shift_threshold"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --shift_threshold");
+            }
         }
         else if (arg == "--ROI")
         {
@@ -322,7 +334,10 @@ void parse_args(int argc, char **argv)
         {
             std::vector<float> peak;
             if (i + 1 < argc) { parse_ROI_source(argv[++i], gROIarr, peak); }
-            else { throw std::invalid_argument("Missing value for --ROIsource"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --ROIsource");
+            }
         }
         else if (arg == "--draw") { gDrawCanvases = true; }
 
@@ -418,7 +433,10 @@ int main(int argc, char **argv)
                           int num_a = std::stoi(a.second.substr(0, 2));
                           int num_b = std::stoi(b.second.substr(0, 2));
                           if (num_a != num_b) return num_a < num_b;
-                          else { return a.second[2] < b.second[2]; }
+                          else
+                          {
+                              return a.second[2] < b.second[2];
+                          }
                       }
                   });
         int _this_run = -1;

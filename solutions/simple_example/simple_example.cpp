@@ -47,7 +47,7 @@ std::shared_ptr<TH2F> get_matrix()
 
 int main(int argc, char **argv)
 {
-    TApplication app("app", 0, 0);
+    TApplication app("app", &argc, argv);
     auto         TEMAT = get_matrix();
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
@@ -120,8 +120,8 @@ int main(int argc, char **argv)
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
     auto duration                        = duration_cast<microseconds>(t2 - t1).count();
-    std::cout << "TOTAL DURATION OF " << duration / (double)1E6 << " seconds"
-              << std::endl;
+    std::cout << "TOTAL DURATION OF " << static_cast<double>(duration) / (double)1E6
+              << " seconds" << std::endl;
 
     app.Run();
     return 0;

@@ -52,8 +52,8 @@ using namespace TEC;
 #include <vector>
 
 // global parameters used in grid search
-const std::vector<int> gRebinX{1};
-const std::vector<int> gRebinY{1};
+const std::vector<uint> gRebinX{1};
+const std::vector<uint> gRebinY{1};
 // const std::vector<double> gSmooth_param_lowess{.2, .4, .6, .8, 1.0};
 // const std::vector<double> gSmooth_param_others{1, 2, 5, 10, 20, 50, 100, 200};
 const std::vector<double> gSmooth_param_others{1, 2, 5};
@@ -86,10 +86,10 @@ void adjust_peak_energy(std::shared_ptr<TH2> TEMAT, std::vector<float> &peak_arr
             << std::endl;
         return;
     }
-    std::unique_ptr<TH1> proj(
-        TEMAT->ProjectionY(Form("adjust_roi_energy_%f", peak_array.at(0)),
-                           TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(0)),
-                           TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(1))));
+    std::unique_ptr<TH1> proj(TEMAT->ProjectionY(
+        Form("adjust_roi_energy_%f", static_cast<double>(peak_array.at(0))),
+        TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(0)),
+        TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(1))));
     proj->SetDirectory(0);
     proj->GetXaxis()->SetRangeUser(peak_array.at(1), peak_array.at(2));
     auto mean = proj->GetMean();
@@ -101,7 +101,7 @@ void adjust_peak_energy(std::shared_ptr<TH2> TEMAT, std::vector<float> &peak_arr
     fitter.AddPeak(mean, true, false, false);
 
     fitter.Fit(proj.get(), "OUTPUT_NONE");
-    peak_array.at(0) = fitter.GetPeak(0)->GetPos();
+    peak_array.at(0) = static_cast<float>(fitter.GetPeak(0)->GetPos());
 }
 
 void write_timeevo_agata_format(std::shared_ptr<CCM> corrections,
@@ -118,13 +118,13 @@ void write_timeevo_agata_format(std::shared_ptr<CCM> corrections,
     std::cout << "Corrections for postPSAfilter are being written to: " << fname
               << std::endl;
 
-    auto         matrix        = corrections->GetInputMatrix();
-    const double time_low_edge = matrix->GetXaxis()->GetBinLowEdge(1);
-    const double time_up_edge =
-        matrix->GetXaxis()->GetBinUpEdge(matrix->GetXaxis()->GetNbins());
+    auto matrix = corrections->GetInputMatrix();
+    // const double time_low_edge = matrix->GetXaxis()->GetBinLowEdge(1);
+    // const double time_up_edge =
+    //     matrix->GetXaxis()->GetBinUpEdge(matrix->GetXaxis()->GetNbins());
 
     double TS_start, TS_end;
-    double gain;
+    // double gain;
     double time;
 
     // Write the header
@@ -221,8 +221,9 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
     settings.print_header(std::cout);
     settings.print_values(std::cout);
 
-    auto mr = TEMAT->Rebin2D(settings.temat_rebin_x, settings.temat_rebin_y,
-                             Form("%%s_rebin_%ix_%iy", TEMAT->GetName(),
+    auto mr = TEMAT->Rebin2D(static_cast<int>(settings.temat_rebin_x),
+                             static_cast<int>(settings.temat_rebin_y),
+                             Form("%s_rebin_%ux_%uy", TEMAT->GetName(),
                                   settings.temat_rebin_x, settings.temat_rebin_y));
 
     if (!mr) { throw std::runtime_error("Error: Rebinning TEMAT failed!"); }
@@ -238,9 +239,9 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
     {
         // we need to "invent" the reference time or it may throw error if the time is
         // outside of this matrix range
-        float stupid_ref_start = rTEMAT->GetXaxis()->GetBinLowEdge(1);
-        float stupid_ref_end =
-            rTEMAT->GetXaxis()->GetBinUpEdge(rTEMAT->GetXaxis()->GetNbins());
+        float stupid_ref_start = static_cast<float>(rTEMAT->GetXaxis()->GetBinLowEdge(1));
+        float stupid_ref_end   = static_cast<float>(
+            rTEMAT->GetXaxis()->GetBinUpEdge(rTEMAT->GetXaxis()->GetNbins()));
         ccm_fix = std::make_shared<CCM>(rTEMAT, ROIs, stupid_ref_start, stupid_ref_end);
         ccm_fix->SetReferenceVector(0, gREFERENCE_VECTOR);
     }
@@ -259,7 +260,10 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
     ccm_fix->CalculateEnergyShifts(8);
 
     if (settings.use_gaussian) { ccm_fix->UseGaussianResult(); }
-    else { ccm_fix->UsePolynomialResult(); }
+    else
+    {
+        ccm_fix->UsePolynomialResult();
+    }
 
     if (settings.interpolator_type.empty() && !settings.interpolator_smoothing)
     {
@@ -303,8 +307,8 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
             std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
             TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
             auto        shifts    = ccm_fix->GetROIShifts(0);
-            auto        profile =
-                ccm_fix->GetInterpolationGraph(0, settings.temat_rebin_x, true);
+            auto        profile   = ccm_fix->GetInterpolationGraph(
+                0, static_cast<int>(settings.temat_rebin_x), true);
 
             TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
                                                   gROIarr.at(2) + gROIarr.at(4));
@@ -339,7 +343,10 @@ std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2> origina
     {
         settings.use_gaussian = use_gaussian;
         if (use_gaussian) { ccm_fix->UseGaussianResult(); }
-        else { ccm_fix->UsePolynomialResult(); }
+        else
+        {
+            ccm_fix->UsePolynomialResult();
+        }
 
         // {
         //     settings.interpolator_smoothing = false;
@@ -413,7 +420,10 @@ std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2> origina
             {
                 // smooth_param = gSmooth_param_lowess;
             }
-            else { smooth_param = gSmooth_param_others; }
+            else
+            {
+                smooth_param = gSmooth_param_others;
+            }
 
             for (const auto par : smooth_param)
             {
@@ -447,21 +457,21 @@ std::vector<ccm_settings> ccm_optimizer_global(
     ccm_settings s;
     s.valid_only = true;
     // rebinX loop
-    for (const int rebinX : gRebinX)
+    for (const auto rebinX : gRebinX)
     {
         s.temat_rebin_x = rebinX;
         // rebinY loop
-        for (const int rebinY : gRebinY)
+        for (const auto rebinY : gRebinY)
         {
             s.temat_rebin_y = rebinY;
             std::shared_ptr<TH2> rTEMAT;
             if (rebinX == 1 && rebinY == 1) { rTEMAT = TEMAT; }
             else
             {
-                rTEMAT = std::shared_ptr<TH2>(
-                    TEMAT->Rebin2D(s.temat_rebin_x, s.temat_rebin_y,
-                                   Form("%%s_rebin_%ix_%iy", TEMAT->GetName(),
-                                        s.temat_rebin_x, s.temat_rebin_y)));
+                rTEMAT = std::shared_ptr<TH2>(TEMAT->Rebin2D(
+                    static_cast<int>(s.temat_rebin_x), static_cast<int>(s.temat_rebin_y),
+                    Form("%s_rebin_%ux_%uy", TEMAT->GetName(), s.temat_rebin_x,
+                         s.temat_rebin_y)));
             }
 
             if (rTEMAT.get() == nullptr)
@@ -545,7 +555,7 @@ void print_help()
     std::cout << std::endl << std::endl;
 }
 
-void set_reference_vector(const int ref_run, const int run)
+void set_reference_vector(const int ref_run)
 {
     // std::string reference_root_file = "Out/run_" + fourCharInt(ref_run) + "/out_" +
     //                                   fourCharInt(ref_run) + "_" + gCRYSTAL +
@@ -587,7 +597,10 @@ void parse_args(int argc, char **argv)
         else if (arg == "--crystal" || arg == "--crys")
         {
             if (i + 1 < argc) { gCRYSTAL = argv[++i]; }
-            else { throw std::runtime_error("Missing value for --crystal"); }
+            else
+            {
+                throw std::runtime_error("Missing value for --crystal");
+            }
         }
         else if (arg == "--chain_runs")
         {
@@ -612,24 +625,36 @@ void parse_args(int argc, char **argv)
                         "--chain_runs must be followed by at least one integer");
                 }
             }
-            else { throw std::runtime_error("Missing value for --chain_runs"); }
+            else
+            {
+                throw std::runtime_error("Missing value for --chain_runs");
+            }
         }
 
         else if (arg == "--dir")
         {
             if (i + 1 < argc) { gDIR = argv[++i]; }
-            else { throw std::runtime_error("Missing value for --dir"); }
+            else
+            {
+                throw std::runtime_error("Missing value for --dir");
+            }
             if (gDIR.back() == '/' && gDIR.size() > 1) gDIR.pop_back();
         }
         else if (arg == "--rootfile" || arg == "--rfile")
         {
             if (i + 1 < argc) { gROOTFILE = argv[++i]; }
-            else { throw std::runtime_error("Missing value for --rootfile"); }
+            else
+            {
+                throw std::runtime_error("Missing value for --rootfile");
+            }
         }
         else if (arg == "--matrix" || arg == "--mat")
         {
             if (i + 1 < argc) { gMATRIX_NAME = argv[++i]; }
-            else { throw std::runtime_error("Missing value for --matrix"); }
+            else
+            {
+                throw std::runtime_error("Missing value for --matrix");
+            }
         }
         else if (arg == "--run")
         {
@@ -644,7 +669,10 @@ void parse_args(int argc, char **argv)
                     throw std::runtime_error("Invalid integer value for --run");
                 }
             }
-            else { throw std::runtime_error("Missing value for --run"); }
+            else
+            {
+                throw std::runtime_error("Missing value for --run");
+            }
         }
         else if (arg == "--ROIsource")
         {
@@ -659,7 +687,10 @@ void parse_args(int argc, char **argv)
                                  "--ROIsource\n";
                 }
             }
-            else { throw std::runtime_error("Missing value for --ROIsource"); }
+            else
+            {
+                throw std::runtime_error("Missing value for --ROIsource");
+            }
         }
         else if (arg == "--ROI")
         {
@@ -722,7 +753,7 @@ void parse_args(int argc, char **argv)
 
     // Set default root file and matrix name as produced by
     // matTimeEvo_AGATA.cpp
-    if (!gCRYSTAL.empty()) { auto crysId = get_crystal_id(gCRYSTAL); }
+    if (!gCRYSTAL.empty()) { (void)get_crystal_id(gCRYSTAL); }
     if (gMATRIX_NAME.empty()) { gMATRIX_NAME = "hE0_TS_" + gCRYSTAL; }
 
     // set
@@ -754,7 +785,7 @@ void run_chained_runs(const ccm_settings &optimal_settings)
 {
     if (gCHAIN_RUNS.empty()) { return; }
 
-    set_reference_vector(gRUN, gCHAIN_RUNS.at(0));
+    set_reference_vector(gRUN);
     for (const auto c_run : gCHAIN_RUNS)
     {
 

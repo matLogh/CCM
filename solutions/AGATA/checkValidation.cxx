@@ -55,6 +55,8 @@ void bckp_conf_file(const std::string &infile, std::string &outfile)
 void modify_conffile(const std::string                            &filename,
                      const std::vector<std::pair<double, double>> &to_be_cut)
 {
+    (void)to_be_cut; // currently not used, but we might want to add the cut times to the
+                     // conf file in the future
     std::ifstream conf_file(filename);
     if (!conf_file.is_open())
     {
@@ -140,8 +142,8 @@ std::vector<std::pair<double, double>> checkValidation(
 
     std::vector<double> integrals;
     std::vector<double> times;
-    integrals.reserve(nbinsx);
-    times.reserve(nbinsx);
+    integrals.reserve(static_cast<size_t>(nbinsx));
+    times.reserve(static_cast<size_t>(nbinsx));
 
     for (int binx = 1; binx < nbinsx; binx++)
     {
@@ -149,10 +151,10 @@ std::vector<std::pair<double, double>> checkValidation(
         integrals.emplace_back(temat->Integral(binx, binx, 1, nbinsy));
     }
 
-    double avg_integral =
-        std::accumulate(integrals.begin(), integrals.end(), 0.0) / integrals.size();
+    double avg_integral = std::accumulate(integrals.begin(), integrals.end(), 0.0) /
+                          static_cast<double>(integrals.size());
 
-    TGraph gr(integrals.size(), times.data(), integrals.data());
+    TGraph gr(static_cast<int>(integrals.size()), times.data(), integrals.data());
     gr.SetName("IntegralGraph");
     gr.SetTitle("Integral of time slices");
     gr.GetXaxis()->SetTitle("Time [s]");
@@ -231,7 +233,10 @@ void parse_args(int argc, char **argv)
                         "--run must be followed by at least one integer value");
                 }
             }
-            else { throw std::invalid_argument("Missing value for --run"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --run");
+            }
         }
         else if (arg == "--crys" || arg == "--crystal" || arg == "--crystals")
         {
@@ -265,7 +270,10 @@ void parse_args(int argc, char **argv)
         else if (arg == "--dir")
         {
             if (i + 1 < argc) { gDIR = argv[++i]; }
-            else { throw std::invalid_argument("Missing value for --dir"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --dir");
+            }
         }
         else if (arg == "--summarize") { gSUMMARIZE_DURATION = true; }
 

@@ -83,7 +83,7 @@ TEC::CCM::CCM(const CCM &other)
       fCorrectionFunctions(other.fCorrectionFunctions),
       fForceRebuildInterpolators(other.fForceRebuildInterpolators),
       fThreadTask(other.fThreadTask.load()), fNthreads(other.fNthreads), V(other.V),
-      fFitDone(other.fFitDone), fCorrectionFits(other.fCorrectionFits)
+      fFitDone(other.fFitDone), ResVec(nullptr), fCorrectionFits(other.fCorrectionFits)
 {
     std::cout << "copy constructor called" << std::endl;
     if (other.ResVec)
@@ -94,7 +94,6 @@ TEC::CCM::CCM(const CCM &other)
             ResVec[roi_index] = new ResCont[V.time_bins];
         }
     }
-    else { ResVec = nullptr; }
     this->CopyMatrixContent();
 }
 
@@ -105,8 +104,7 @@ TEC::CCM::CCM(CCM &&other)
       fForceRebuildInterpolators(other.fForceRebuildInterpolators),
       fThreadTask(other.fThreadTask.load()), fNthreads(other.fNthreads),
       V(std::move(other.V)), fFitDone(other.fFitDone),
-      fCorrectionFits(std::move(other.fCorrectionFits)),
-      ResVec(other.ResVec) // Transfer ownership of ResVec
+      ResVec(other.ResVec), fCorrectionFits(std::move(other.fCorrectionFits))
 {
     std::cout << "move constructor called" << std::endl;
     // Transfer ownership of ResVec
@@ -123,7 +121,7 @@ TEC::CCM::~CCM()
             delete[] ResVec[roi_index];
         }
         delete[] ResVec;
-        ResVec == nullptr;
+        ResVec = nullptr;
     }
 
     if (V.TEMATarr)
@@ -283,7 +281,7 @@ void TEC::CCM::CreateReferenceVector(const uint   ROI_index,
 
 void TEC::CCM::Normalize(std::vector<float> &v)
 {
-    double norm = 0;
+    float norm = 0;
     for (uint i = 0; i < v.size(); i++) { norm += (v[i] * v[i]); }
     if (norm <= 0)
     {
@@ -292,7 +290,7 @@ void TEC::CCM::Normalize(std::vector<float> &v)
             "reference time is not set correctly?");
     }
 
-    norm = 1. / (double)sqrt(norm);
+    norm = 1.f / sqrtf(norm);
     for (uint i = 0; i < v.size(); i++) { v[i] = v[i] * norm; }
     // double norm = std::inner_product(v.begin(), v.end(), v.begin(), 0.0);
     // if (norm <= 0)
@@ -834,7 +832,7 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix(const TH2 *input_mat)
     Int_t global_bin, bin_start, bin_end;
 
     const TAxis   *axis               = fixed_mat->GetYaxis();
-    const Double_t bin_width          = axis->GetBinWidth(1);
+    // const Double_t bin_width          = axis->GetBinWidth(1);
     const Double_t inverted_bin_width = 1. / (double)axis->GetBinWidth(1);
 
     for (int time_bin = 1; time_bin <= fixed_mat->GetXaxis()->GetNbins(); time_bin++)
@@ -949,7 +947,10 @@ void TEC::CCM::FixTree(const std::string &tfilename,
                        const bool         valid_only,
                        const int          time_subdivision)
 {
+    [[maybe_unused]] auto _ = std::tie(tfilename, treename, e_branchname, 
+                                        ts_branchname, valid_only, time_subdivision);
     std::cout << "Fix Tree not implemented yet!\n";
+
 }
 
 //     // input checks
@@ -1205,13 +1206,13 @@ void TEC::CCM::UseMaxDPResult()
                 std::max_element(ResVec[roi_index][time_index].dp_vec.begin(),
                                  ResVec[roi_index][time_index].dp_vec.end());
 
-            int maxdp_shift = std::distance(ResVec[roi_index][time_index].dp_vec.begin(),
-                                            maxdp_iterator);
+            int maxdp_shift = static_cast<int>(std::distance(ResVec[roi_index][time_index].dp_vec.begin(),
+                                                            maxdp_iterator));
             // std::cout << "MaxDP shift: "
             //           << maxdp_shift + V.ROIs[roi_index].base_shift_value << " time "
             //           << time_index << std::endl;
             ResVec[roi_index][time_index].bin_shift =
-                (maxdp_shift + V.ROIs[roi_index].base_shift_value);
+                static_cast<float>(maxdp_shift + V.ROIs[roi_index].base_shift_value);
             ResVec[roi_index][time_index].energy_shift =
                 V.TEMAT->GetYaxis()->GetBinWidth(1) *
                 ResVec[roi_index][time_index].bin_shift;
@@ -1279,7 +1280,7 @@ void TEC::CCM::CheckReferenceVectors()
 }
 
 std::unique_ptr<TGraph> TEC::CCM::GetDotProductGraph(const size_t roi_index,
-                                                     const int    time_bin)
+                                                     const size_t    time_bin)
 {
     if (roi_index >= V.ROIs.size())
     {
@@ -1289,16 +1290,16 @@ std::unique_ptr<TGraph> TEC::CCM::GetDotProductGraph(const size_t roi_index,
 
     const auto rc = this->GetResultContainer(roi_index, time_bin);
     if (rc == nullptr) { throw std::runtime_error("Result container is nullptr"); }
-    double sum = 0;
-    for (int i = 0; i < rc->dp_vec.size(); i++)
+    float sum = 0;
+    for (std::size_t i = 0; i < rc->dp_vec.size(); i++)
     {
         sum += rc->dp_vec.at(i);
-        gr->AddPoint(i + V.ROIs[roi_index].base_shift_value, rc->dp_vec.at(i));
+        gr->AddPoint(static_cast<double>(static_cast<int>(i) + V.ROIs[roi_index].base_shift_value), static_cast<double>(rc->dp_vec.at(i)));
     }
-    gr->SetName(Form("dot_product_graph_%i_%i", roi_index, time_bin));
-    gr->SetTitle(Form("Dot product graph for ROI %i, time bin %i", roi_index, time_bin));
+    gr->SetName(Form("dot_product_graph_%li_%li", roi_index, time_bin));
+    gr->SetTitle(Form("Dot product graph for ROI %li, time bin %li", roi_index, time_bin));
     gr->GetXaxis()->SetTitle(
-        Form("Bin shift of ROI %i at time bin %i", roi_index, time_bin));
+        Form("Bin shift of ROI %li at time bin %li", roi_index, time_bin));
     return gr;
 }
 

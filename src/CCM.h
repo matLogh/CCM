@@ -210,7 +210,7 @@ class CCM
     }
 
     std::unique_ptr<TGraph> GetDotProductGraph(const size_t roi_index,
-                                               const int    time_bin);
+                                               const size_t    time_bin);
 
     /// @brief Get all the shifts for selected ROI as a function of time. This is useful
     /// if you want to modify calculated shifts using smoothing functions or set own

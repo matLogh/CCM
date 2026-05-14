@@ -50,7 +50,7 @@ int SegmentsTimeEvo(int              runNr,
                     std::string      crystal,
                     std::vector<int> segments,
                     int              seconds_per_bin,
-                    ULong64_t        maxEntries = 0,
+                    Long64_t         maxEntries = 0,
                     std::string      outDir     = "",
                     std::string      replayDir  = "")
 {
@@ -77,7 +77,7 @@ int SegmentsTimeEvo(int              runNr,
     TChain *tree = new TChain(("TreeMaster"));
     tree->Add((inFilePattern + "*.root").c_str());
 
-    ULong64_t TotalNumberOfEntries = tree->GetEntries();
+    Long64_t TotalNumberOfEntries = tree->GetEntries();
     if (maxEntries != 0) TotalNumberOfEntries = maxEntries;
 
     ULong64_t minTS = 0;
@@ -136,9 +136,10 @@ int SegmentsTimeEvo(int              runNr,
     std::cout << "maxTS: " << maxTS << std::endl;
 
     // allocate matrices
-    Long64_t minTime   = Long64_t(minTS * 1e-8) / 60. - 10;
-    Long64_t maxTime   = Long64_t(maxTS * 1e-8) / 60. + 10;
-    int      nTimeBins = (maxTime - minTime) * 60 / seconds_per_bin; // 30 seconds per bin
+    // 60 for minutes, 10e8 for 10ns to second
+    int minTime   = static_cast<int>(minTS / 6000000000) - 10;
+    int maxTime   = static_cast<int>(maxTS / 6000000000) + 10;
+    int nTimeBins = static_cast<int>(maxTime - minTime) * 60 / seconds_per_bin;
 
     std::cout << "time binning: " << nTimeBins << "\trange: " << minTime << " " << maxTime
               << std::endl;
@@ -162,7 +163,7 @@ int SegmentsTimeEvo(int              runNr,
     }
 
     // sort data
-    for (ULong64_t entry = 0; entry < TotalNumberOfEntries; entry++)
+    for (Long64_t entry = 0; entry < TotalNumberOfEntries; entry++)
     {
         // Start timing the loop
         static auto start_time = std::chrono::steady_clock::now();
@@ -171,27 +172,30 @@ int SegmentsTimeEvo(int              runNr,
         tree->GetEntry(entry);
         if (nbhits == 0) continue;
 
-        for (int n = 0; n < nbhits; n++)
+        for (uint n = 0; n < static_cast<uint>(nbhits); n++)
         {
             if (hitId[n] != crystalId) continue;
             auto it = std::find(segments.begin(), segments.end(), hitSg[n]);
             if (it != segments.end())
             {
-                int index = std::distance(segments.begin(), it);
-                timeEvoMatrices[index]->Fill(hitTS[n] * 1.e-8 / 60.0, hitE[n]);
+                uint _index = static_cast<uint>(std::distance(segments.begin(), it));
+                timeEvoMatrices[_index]->Fill(
+                    static_cast<double>(hitTS[n]) * 1.e-8 / 60.0, hitE[n]);
             }
         }
 
         // Print progress every X entries
         if (entry % 1000000 == 0)
         {
-            auto   current_time    = std::chrono::steady_clock::now();
-            double elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(
-                                         current_time - start_time)
-                                         .count();
-            double progress = static_cast<double>(entry) / TotalNumberOfEntries;
-            double estimated_total_time = elapsed_seconds / progress;
-            int    remaining_time       = estimated_total_time - elapsed_seconds;
+            auto current_time    = std::chrono::steady_clock::now();
+            auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+                                       current_time - start_time)
+                                       .count();
+            double progress =
+                static_cast<double>(entry) / static_cast<double>(TotalNumberOfEntries);
+            double estimated_total_time = static_cast<double>(elapsed_seconds) / progress;
+            auto   remaining_time =
+                static_cast<int64_t>(estimated_total_time) - elapsed_seconds;
 
             std::cout << "\rProcessed " << entry << " / " << TotalNumberOfEntries << " ("
                       << (progress * 100.0) << "%)"
@@ -200,7 +204,7 @@ int SegmentsTimeEvo(int              runNr,
                       << "s                                         " << std::flush;
         }
     }
-    for (int i = 0; i < root_files.size(); i++)
+    for (uint i = 0; i < root_files.size(); i++)
     {
         std::cout << "\nWriting matrix for crystal " << crystal << " segment "
                   << segments[i] << std::endl;
@@ -215,7 +219,7 @@ int SegmentsTimeEvo(int              runNr,
 int CoresTimeEvo(int                 runNr,
                  std::vector<string> crystals,
                  int                 seconds_per_bin,
-                 ULong64_t           maxEntries = 0,
+                 Long64_t            maxEntries = 0,
                  std::string         outDir     = "",
                  std::string         replayDir  = "")
 {
@@ -246,7 +250,7 @@ int CoresTimeEvo(int                 runNr,
     TChain *tree = new TChain(("TreeMaster"));
     tree->Add((inFilePattern + "*.root").c_str());
 
-    ULong64_t TotalNumberOfEntries = tree->GetEntries();
+    Long64_t TotalNumberOfEntries = tree->GetEntries();
     if (maxEntries != 0) TotalNumberOfEntries = maxEntries;
 
     ULong64_t minTS = 0;
@@ -300,10 +304,10 @@ int CoresTimeEvo(int                 runNr,
     std::cout << "minTS: " << minTS << "\n";
     std::cout << "maxTS: " << maxTS << std::endl;
 
-    // 1 bin = 5 mins
-    Long64_t minTime   = Long64_t(minTS * 1e-8) / 60. - 10;
-    Long64_t maxTime   = Long64_t(maxTS * 1e-8) / 60. + 10;
-    int      nTimeBins = (maxTime - minTime) * 60 / seconds_per_bin; // 30 seconds per bin
+    // 60 for minutes, 10e8 for 10ns to second
+    int minTime   = static_cast<int>(minTS / 6000000000) - 10;
+    int maxTime   = static_cast<int>(maxTS / 6000000000) + 10;
+    int nTimeBins = static_cast<int>(maxTime - minTime) * 60 / seconds_per_bin;
 
     std::cout << "time binning: " << nTimeBins << "\trange: " << minTime << " " << maxTime
               << std::endl;
@@ -325,7 +329,7 @@ int CoresTimeEvo(int                 runNr,
         timeEvoMatrices.back()->SetYTitle("Energy [keV]");
     }
 
-    for (ULong64_t entry = 0; entry < TotalNumberOfEntries; entry++)
+    for (Long64_t entry = 0; entry < TotalNumberOfEntries; entry++)
     {
         // Start timing the loop
         static auto start_time = std::chrono::steady_clock::now();
@@ -334,26 +338,29 @@ int CoresTimeEvo(int                 runNr,
         tree->GetEntry(entry);
         if (nbcores == 0) continue;
 
-        for (int n = 0; n < nbcores; n++)
+        for (uint n = 0; n < static_cast<uint>(nbcores); n++)
         {
             auto it = std::find(crystalIds.begin(), crystalIds.end(), coreId[n]);
             if (it != crystalIds.end())
             {
-                int index = std::distance(crystalIds.begin(), it);
-                timeEvoMatrices[index]->Fill(coreTS[n] * 1.e-8 / 60.0, coreE0[n]);
+                uint _index = static_cast<uint>(std::distance(crystalIds.begin(), it));
+                timeEvoMatrices[_index]->Fill(
+                    static_cast<double>(coreTS[n]) * 1.e-8 / 60.0, coreE0[n]);
             }
         }
 
         // Print progress every X entries
         if (entry % 1000000 == 0)
         {
-            auto   current_time    = std::chrono::steady_clock::now();
-            double elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(
-                                         current_time - start_time)
-                                         .count();
-            double progress = static_cast<double>(entry) / TotalNumberOfEntries;
-            double estimated_total_time = elapsed_seconds / progress;
-            int    remaining_time       = estimated_total_time - elapsed_seconds;
+            auto current_time    = std::chrono::steady_clock::now();
+            auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+                                       current_time - start_time)
+                                       .count();
+            double progress =
+                static_cast<double>(entry) / static_cast<double>(TotalNumberOfEntries);
+            double estimated_total_time = static_cast<double>(elapsed_seconds) / progress;
+            auto   remaining_time =
+                static_cast<int64_t>(estimated_total_time) - elapsed_seconds;
 
             std::cout << "\rProcessed " << entry << " / " << TotalNumberOfEntries << " ("
                       << (progress * 100.0) << "%)"
@@ -362,7 +369,7 @@ int CoresTimeEvo(int                 runNr,
                       << "s                                         " << std::flush;
         }
     }
-    for (int i = 0; i < root_files.size(); i++)
+    for (uint i = 0; i < root_files.size(); i++)
     {
         std::cout << "\nWriting matrix for crystal " << crystals[i] << std::endl;
 
@@ -426,7 +433,10 @@ void parseArguments(int                       argc,
         else if (arg == "--Tbinning")
         {
             if (i + 1 < argc) { binning = std::stoi(argv[++i]); }
-            else { throw std::invalid_argument("Missing value for --binning"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --binning");
+            }
         }
         else if (arg == "--Ebinning")
         {
@@ -436,17 +446,26 @@ void parseArguments(int                       argc,
                 gENERGY_BINING.emplace_back(std::stof(argv[++i]));
                 gENERGY_BINING.emplace_back(std::stof(argv[++i]));
             }
-            else { throw std::invalid_argument("Missing values for --Ebinning"); }
+            else
+            {
+                throw std::invalid_argument("Missing values for --Ebinning");
+            }
         }
         else if (arg == "--run")
         {
             if (i + 1 < argc) { run = std::stoi(argv[++i]); }
-            else { throw std::invalid_argument("Missing value for --run"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --run");
+            }
         }
         else if (arg == "--maxentries")
         {
             if (i + 1 < argc) { maxEntries = std::stol(argv[++i]); }
-            else { throw std::invalid_argument("Missing value for --maxentries"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --maxentries");
+            }
         }
         else if (arg == "--crys" || arg == "--crystal" || arg == "--crystals")
         {
@@ -483,12 +502,18 @@ void parseArguments(int                       argc,
         else if (arg == "--outdir")
         {
             if (i + 1 < argc) { outDir = argv[++i]; }
-            else { throw std::invalid_argument("Missing value for --outdir"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --outdir");
+            }
         }
         else if (arg == "--replaydir")
         {
             if (i + 1 < argc) { replayDir = argv[++i]; }
-            else { throw std::invalid_argument("Missing value for --replaydir"); }
+            else
+            {
+                throw std::invalid_argument("Missing value for --replaydir");
+            }
             if (replayDir.back() == '/') { replayDir.pop_back(); }
         }
         else
@@ -517,6 +542,9 @@ int main(int argc, char **argv)
     std::string              outDir{};
     std::string              replayDir{};
     int                      segmentId = -1; // -1 = core
+
+    (void)segmentId; // currently not used, but can be used in the future to decide
+                     // whether to run core or segment time evolution
 
     parseArguments(argc, argv, number_of_seconds_per_bin, run, maxentries, crystals,
                    segments, outDir, replayDir);

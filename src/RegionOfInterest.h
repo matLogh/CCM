@@ -41,12 +41,12 @@ class RegionOfInterest
     int bin_displacement_high;
 
     /// @brief dimension of vectors that is used for cross-correlation
-    int vector_dimension;
+    std::size_t vector_dimension;
     /// @brief how many bins are in the ROI it total - number of bins between
     /// bin_window_low minus displacement_low and bin_window_high plus displacement_high
     int displacement_range;
     /// @brief how many shifts of the vector are to be performed
-    int displacement_steps;
+    std::size_t displacement_steps;
 
     /// @brief just a helper variable, used to calculate initial shift of the vector
     int base_shift_value;
@@ -72,9 +72,9 @@ class RegionOfInterest
                      int    _bin_window_high,
                      int    _bin_displacement_low,
                      int    _bin_displacement_high,
-                     int    _vector_dimension,
+                     std::size_t    _vector_dimension,
                      int    _displacement_range,
-                     int    _displacement_steps,
+                     std::size_t    _displacement_steps,
                      int    _base_shift_value)
         : energy_window_low(_energy_window_low), energy_window_high(_energy_window_high),
           energy_displacement_low(_energy_displacement_low),

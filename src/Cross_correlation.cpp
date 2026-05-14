@@ -66,7 +66,7 @@ void TEC::CrossCorrel::Process(unsigned int      thread_id,
 }
 
 /****************************************************
-value -999 passed to dp_vec indicates error and this
+value -999 passed to _dp_vec indicates error and this
 must be disregarded later
 ****************************************************/
 void TEC::CrossCorrel::ROIAnalysis(const int   ROI_index,
@@ -77,12 +77,12 @@ void TEC::CrossCorrel::ROIAnalysis(const int   ROI_index,
     std::vector<float> data_vec = GetDataVec(ROI_index, time);
 
     // vector of dot products
-    dp_vec.clear();
-    dp_vec.resize((size_t)V->ROIs[(uint)ROI_index].displacement_steps);
+    _dp_vec.clear();
+    _dp_vec.resize((size_t)V->ROIs[(uint)ROI_index].displacement_steps);
     // temporary vector holding current data
     std::vector<float> temp_data(V->ROIs[(uint)ROI_index].vector_dimension);
     // cycle through through the whole region, calculate cross correlation
-    for (int shift = 0; shift < V->ROIs[(uint)ROI_index].displacement_steps; shift++)
+    for (std::size_t shift = 0; shift < V->ROIs[(uint)ROI_index].displacement_steps; shift++)
     {
         std::memcpy(temp_data.data(), &data_vec[shift],
                     V->ROIs[(uint)ROI_index].vector_dimension * sizeof(float));
@@ -91,9 +91,9 @@ void TEC::CrossCorrel::ROIAnalysis(const int   ROI_index,
         //     &data_vec[shift + V->ROIs[(uint)ROI_index].vector_dimension]);
 
         if (this->Normalize(temp_data) == 0) // 0 == its OK
-            dp_vec[shift] =
+            _dp_vec[shift] =
                 this->DotProduct(temp_data, V->sample_vector[(uint)ROI_index]);
-        else { dp_vec[shift] = -999; }
+        else { _dp_vec[shift] = -999; }
     }
 
     this->SaveToContainer(time, ROI_index, mtx_fit);
@@ -103,7 +103,7 @@ std::vector<float> TEC::CrossCorrel::GetDataVec(const int ROI_index, const int t
 {
     std::vector<float> data_vec(
         &V->TEMATarr[ROI_index][time][0],
-        &V->TEMATarr[ROI_index][time][V->ROIs[ROI_index].displacement_range]);
+        &V->TEMATarr[ROI_index][time][V->ROIs[static_cast<size_t>(ROI_index)].displacement_range]);
     return data_vec;
 }
 
@@ -114,27 +114,27 @@ retval:
 ****************************************************/
 int TEC::CrossCorrel::Normalize(std::vector<float> &v)
 {
-    norm = 0;
-    for (uint i = 0; i < v.size(); i++) { norm += (v[i] * v[i]); }
-    if (norm == 0) { return -1; }
+    _norm = 0;
+    for (uint i = 0; i < v.size(); i++) { _norm += (v[i] * v[i]); }
+    if (_norm == 0) { return -1; }
 
-    norm = 1. / (double)sqrt(norm);
-    for (uint i = 0; i < v.size(); i++) { v[i] = v[i] * norm; }
+    _norm = 1.f / sqrtf(_norm);
+    for (uint i = 0; i < v.size(); i++) { v[i] = v[i] * _norm; }
     return 0;
 }
 
-double TEC::CrossCorrel::DotProduct(const std::vector<float> &v1,
+float TEC::CrossCorrel::DotProduct(const std::vector<float> &v1,
                                     const std::vector<float> &v2)
 {
-    dp = 0;
+    _dp = 0;
     if (v1.size() != v2.size())
     {
         std::cerr << "WRONG VECTOR SIZE" << std::endl;
         throw 3;
         exit(3);
     }
-    for (uint i = 0; i < v1.size(); i++) { dp += v1[i] * v2[i]; }
-    return dp;
+    for (uint i = 0; i < v1.size(); i++) { _dp += v1[i] * v2[i]; }
+    return _dp;
 }
 
 void TEC::CrossCorrel::SaveToContainer(const int   time,
@@ -142,20 +142,20 @@ void TEC::CrossCorrel::SaveToContainer(const int   time,
                                        std::mutex &mtx_fit)
 {
     // check if dp has valid values
-    if (std::count(dp_vec.begin(), dp_vec.end(), -999) == dp_vec.size())
+    if (static_cast<std::size_t>(std::count(_dp_vec.begin(), _dp_vec.end(), -999)) == _dp_vec.size())
     {
         ResVec[ROI_index][time].isValid = false;
-        // std::cout << "\nTime " << time << " contains " << std::count(dp_vec.begin(),
-        // dp_vec.end(), -999)
+        // std::cout << "\nTime " << time << " contains " << std::count(_dp_vec.begin(),
+        // _dp_vec.end(), -999)
         //           << " invalid values" << std::endl;
         return;
     }
     std::replace_if(
-        dp_vec.begin(), dp_vec.end(), [](double i) { return i == -999; }, 0.0);
+        _dp_vec.begin(), _dp_vec.end(), [](double i) { return i == -999; }, 0.0);
 
     // copy dp to container
-    ResVec[ROI_index][time].dp_vec.resize(dp_vec.size());
-    memcpy(&ResVec[ROI_index][time].dp_vec[0], &dp_vec[0], dp_vec.size() * sizeof(float));
+    ResVec[ROI_index][time].dp_vec.resize(_dp_vec.size());
+    memcpy(&ResVec[ROI_index][time].dp_vec[0], &_dp_vec[0], _dp_vec.size() * sizeof(float));
 
     // get shift using pol2 fit of 9 points
     this->GetShift_Poly2(ResVec[ROI_index][time].poly_shift, ResVec[ROI_index][time].dp,
@@ -168,7 +168,7 @@ void TEC::CrossCorrel::SaveToContainer(const int   time,
     mtx_fit.unlock();
     // set the default shift value - use gaussian as default
     ResVec[ROI_index][time].bin_shift =
-        ResVec[ROI_index][time].gfit_mu + V->ROIs[ROI_index].base_shift_value;
+        ResVec[ROI_index][time].gfit_mu + V->ROIs[static_cast<size_t>(ROI_index)].base_shift_value;
     ResVec[ROI_index][time].energy_shift =
         V->TEMAT->GetYaxis()->GetBinWidth(1) * ResVec[ROI_index][time].bin_shift;
 }
@@ -179,25 +179,25 @@ void TEC::CrossCorrel::GetShift_Poly2(double &shift, double &dp, std::mutex &mtx
     static_assert(ndim % 2 == 1, "ndim must be odd");
 
     int index =
-        std::distance(dp_vec.begin(), std::max_element(dp_vec.begin(), dp_vec.end()));
-    if (dp_vec.size() < ndim)
+        static_cast<int>(std::distance(_dp_vec.begin(), std::max_element(_dp_vec.begin(), _dp_vec.end())));
+    if (_dp_vec.size() < ndim)
     {
         shift = static_cast<double>(index);
-        dp    = dp_vec[index];
+        dp    = _dp_vec[static_cast<std::size_t>(index)];
         return;
     }
 
     double arr_x[ndim];
     double arr_y[ndim];
     int    correction = 0;
-    if (index + ndim / 2 > dp_vec.size() - 1)
-        correction = (dp_vec.size() - 1) - (index + ndim / 2);
+    if (index + ndim / 2 > static_cast<int>(_dp_vec.size()) - 1)
+        correction = (static_cast<int>(_dp_vec.size()) - 1) - (index + ndim / 2);
     if (index - ndim / 2 < 0) correction = ndim / 2 - index;
     // for (int i = -ndim / 2 + correction; i <= ndim / 2 + correction; i++)
     for (int i = 0; i < ndim; i++)
     {
         arr_x[i] = index + i + correction - ndim / 2;
-        arr_y[i] = dp_vec[arr_x[i]];
+        arr_y[i] = _dp_vec[static_cast<std::size_t>(arr_x[i])];
     }
     TGraph gr(ndim, arr_x, arr_y);
 
@@ -210,10 +210,10 @@ void TEC::CrossCorrel::GetShift_Poly2(double &shift, double &dp, std::mutex &mtx
         // std::cout << std::endl;
         gr.Fit(&fcn, "RQNC");
         // std::cout << "linear fit end" << std::endl;
-        // if (fcn.GetMaximum(arr_x[0], arr_x[ndim - 1]) < dp_vec[index])
+        // if (fcn.GetMaximum(arr_x[0], arr_x[ndim - 1]) < _dp_vec[index])
         // {
         //     shift = static_cast<double>(index);
-        //     dp = dp_vec[index];
+        //     dp = _dp_vec[index];
         //     mtx_fit.unlock();
         //     return;
         // }
@@ -226,34 +226,34 @@ void TEC::CrossCorrel::GetShift_Poly2(double &shift, double &dp, std::mutex &mtx
 
 void TEC::CrossCorrel::GetShift_Gaussian(double &rchi2, double &sigma, double &mu)
 {
-    int    nbins = static_cast<int>(dp_vec.size());
+    int    nbins = static_cast<int>(_dp_vec.size());
     TH1D   h(Form("h_%d", current_task), "", nbins, -0.5, nbins - 0.5);
-    double mean_dp = 0;
-    for (uint i = 0; i < nbins; i++)
+    float mean_dp = 0;
+    for (uint i = 0; i < (uint)nbins; i++)
     {
-        mean_dp += dp_vec[i];
-        h.SetBinContent(i + 1, dp_vec[i]);
+        mean_dp += _dp_vec[i];
+        h.SetBinContent((int)i + 1, _dp_vec[i]);
     }
 
-    mean_dp = mean_dp / (double)nbins;
+    mean_dp = mean_dp / (float)nbins;
 
-    int left_bin   = 0;
-    int right_bin  = nbins;
-    int center_bin = h.GetMaximumBin();
+    uint left_bin   = 0;
+    uint right_bin  = static_cast<uint>(nbins);
+    uint center_bin = static_cast<uint>(h.GetMaximumBin());
 
     // find fist bin containing sub-mean-value LEFT from the peak
-    for (int i = center_bin; i >= 1; i--)
+    for (uint i = center_bin; i >= 1; i--)
     {
         left_bin = i;
-        if (dp_vec[i - 1] - mean_dp < 0) { break; }
+        if (_dp_vec[i - 1] - mean_dp < 0) { break; }
     }
 
     // find fist bin containing sub-mean-value RIGHT from the peak
-    for (uint i = center_bin; i <= nbins; i++)
+    for (uint i = static_cast<uint>(center_bin); i <= (uint)nbins; i++)
     {
         right_bin = i;
 
-        if (dp_vec[i - 1] - mean_dp < 0) { break; }
+        if (_dp_vec[i - 1] - mean_dp < 0) { break; }
     }
 
     // return values of result:
@@ -271,9 +271,9 @@ void TEC::CrossCorrel::GetShift_Gaussian(double &rchi2, double &sigma, double &m
     }
 
     // get axis values for given bins
-    double low    = h.GetXaxis()->GetBinCenter(left_bin);
-    double high   = h.GetXaxis()->GetBinCenter(right_bin);
-    double middle = h.GetXaxis()->GetBinCenter(center_bin);
+    double low    = h.GetXaxis()->GetBinCenter(static_cast<int>(left_bin));
+    double high   = h.GetXaxis()->GetBinCenter(static_cast<int>(right_bin));
+    double middle = h.GetXaxis()->GetBinCenter(static_cast<int>(center_bin));
 
     // set fit function with parameters
     // param:   0 - amplitude

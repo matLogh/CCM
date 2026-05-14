@@ -50,19 +50,19 @@ class CrossCorrel
                  std::mutex       &mtx_fit);
 
     int    Normalize(std::vector<float> &v);
-    double DotProduct(const std::vector<float> &v1, const std::vector<float> &v2);
+    float DotProduct(const std::vector<float> &v1, const std::vector<float> &v2);
 
   private:
     int current_task;
 
-    double norm;
-    double dp;
+    float _norm;
+    float _dp;
     int    retval;
 
     unsigned int fThread_id;
 
     // vector of dot products calculated using cross correlation
-    std::vector<float> dp_vec;
+    std::vector<float> _dp_vec;
     VarManager        *V;
     ResCont          **ResVec;
 

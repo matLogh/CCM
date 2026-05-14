@@ -32,7 +32,7 @@ using namespace TEC;
 
 int main(int argc, char **argv)
 {
-    TApplication app("app", 0, 0);
+    TApplication app("app", &argc, argv);
 
     TFile *f =
         TFile::Open((std::string(DATA_PATH) + "/example_data/aoq_vs_xfp.root").c_str());
@@ -58,10 +58,10 @@ int main(int argc, char **argv)
 
     std::vector<RegionOfInterest> ROIs;
 
-    for (int i = 0; i < peaks.size(); i++)
+    for (uint i = 0; i < peaks.size(); i++)
     {
         ROIs.emplace_back(
-            RegionOfInterest(mat, peaks[i] - 2, peaks[i] + 2, -1.5, 1.5, peaks[i]));
+            RegionOfInterest(mat, peaks[i] - 2., peaks[i] + 2., -1.5, 1.5, peaks[i]));
     }
 
     // create CCM object
@@ -87,11 +87,11 @@ int main(int argc, char **argv)
     fix.SaveShiftTable();
 
     // filter for valid results
-    for (int t = 0; t < fix.GetNumberOfTimeIndices(); t++)
+    for (std::size_t t = 0; t < fix.GetNumberOfTimeIndices(); t++)
     {
-        int goodroi = fix.GetNumberOfROIs();
+        auto goodroi = fix.GetNumberOfROIs();
 
-        for (int roi = 0; roi < fix.GetNumberOfROIs(); roi++)
+        for (std::size_t roi = 0; roi < fix.GetNumberOfROIs(); roi++)
         {
             const auto *result = fix.GetResultContainer(roi, t);
             if (result->gfit_sigma < 1 || result->gfit_sigma > 5 || result->dp < 0.6)
@@ -134,8 +134,8 @@ int main(int argc, char **argv)
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
     auto duration                        = duration_cast<microseconds>(t2 - t1).count();
-    std::cout << "TOTAL DURATION OF " << duration / (double)1E6 << " seconds"
-              << std::endl;
+    std::cout << "TOTAL DURATION OF " << static_cast<double>(duration) / (double)1E6
+              << " seconds" << std::endl;
 
     app.Run();
     return 0;

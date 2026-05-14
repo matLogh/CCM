@@ -16,25 +16,35 @@ TEC::RegionOfInterest::RegionOfInterest(const std::shared_ptr<TH2> matrix,
           static_cast<int>(energy_displacement_low / matrix->GetYaxis()->GetBinWidth(1))),
       bin_displacement_high(static_cast<int>(energy_displacement_high /
                                              matrix->GetYaxis()->GetBinWidth(1))),
-      vector_dimension(bin_window_high - bin_window_low),
-      displacement_range(bin_displacement_high - bin_displacement_low + vector_dimension),
-      displacement_steps(displacement_range - vector_dimension),
+      vector_dimension(static_cast<std::size_t>(bin_window_high - bin_window_low)),
+      displacement_range(bin_displacement_high - bin_displacement_low + static_cast<int>(vector_dimension)),
+      displacement_steps(static_cast<std::size_t>(displacement_range) - vector_dimension),
       //   base_shift_value(bin_window_low - bin_displacement_low)
       base_shift_value(bin_displacement_low)
 {
+    assert(displacement_range - (int)vector_dimension > 0);
+
     if (_energy_window_low > _energy_window_high)
+    {
         throw std::runtime_error("ERROR in constructor of RegionOfInterest: "
                                  "energy_window_low > energy_window_high");
+    }
     if (_energy_displacement_low > _energy_displacement_high)
+    {
         throw std::runtime_error("ERROR in constructor of RegionOfInterest: "
                                  "energy_displacement_low > energy_displacement_high");
+    }
     if (bin_window_high + bin_displacement_high > matrix->GetYaxis()->GetNbins())
+    {
         throw std::runtime_error("ERROR in constructor of RegionOfInterest: Energy "
                                  "window + displacement is larger then range of matrix!");
+    }
     if (bin_window_low - bin_displacement_low < 1)
+    {
         throw std::runtime_error(
             "ERROR in constructor of RegionOfInterest: Energy window - displacement is "
             "smaller then range of matrix!");
+    }
 }
 
 void TEC::RegionOfInterest::Print() const noexcept

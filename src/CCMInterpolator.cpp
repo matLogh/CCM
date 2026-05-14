@@ -132,32 +132,30 @@ void TEC::CCMInterpolator::EnableInterpolation()
 
 int TEC::CCMInterpolator::GetIndex(const double x) const
 {
-    double diff = std::numeric_limits<double>::max();
-
     auto lower = std::lower_bound(fX.begin(), fX.end(), x);
     if (lower == fX.end()) { return -1; }
     else if (lower == fX.begin()) { return 0; }
 
-    auto index = std::distance(fX.begin(), lower);
-    if (std::abs(fX[index] - x) < std::abs(fX[index - 1] - x)) { return index; }
+    auto index = static_cast<int>(std::distance(fX.begin(), lower));
+    if (std::abs(fX[static_cast<uint>(index)] - x) < std::abs(fX[static_cast<uint>(index) - 1] - x)) { return index; }
     return index - 1;
 }
 
 int TEC::CCMInterpolator::InterpolationValid(const double x, const int index) const
 {
     // int    index = this->GetIndex(x);
-    if (index < 0 || index >= fX.size())
+    if (index < 0 || index >= static_cast<int>(fX.size()))
     {
         throw std::runtime_error(
             "TEC::CCMInterpolator::InterpolationValid: Error! Index out of bounds");
     }
-    double diff = x - fX[index];
+    double diff = x - fX[static_cast<uint>(index)];
 
     // check if the closest point is valid
-    if (!fValid[index]) return 0;
+    if (!fValid[static_cast<uint>(index)]) return 0;
 
-    if (diff < 0 && !fValid[index - 1]) return 0;
-    if (diff > 0 && !fValid[index + 1]) return 0;
+    if (diff < 0 && !fValid[static_cast<uint>(index) - 1]) return 0;
+    if (diff > 0 && !fValid[static_cast<uint>(index) + 1]) return 0;
 
     // interpolating before first point in array
     // if (index == 0 && diff < 0) return false;
@@ -167,24 +165,24 @@ int TEC::CCMInterpolator::InterpolationValid(const double x, const int index) co
     // check validity of just closest neighbour
     switch (fType)
     {
-    case ROOT::Math::Interpolation::kLINEAR: {
-        // we need just our point and closest neighbour, check already performed above
-        return 1;
-    }
-    case ROOT::Math::Interpolation::kCSPLINE ||
-        ROOT::Math::Interpolation::kCSPLINE_PERIODIC: {
-        // we need 3 points, check if we have them
-        if (index - 1 < 0 || index + 1 >= fX.size()) return 2;
-        return fValid[index - 1] && fValid[index + 1] ? 1 : 2;
-    }
-    default: {
-        // we need 5 points, check if we have them
-        if (index - 2 < 0 || index + 2 >= fX.size()) return 2;
-        return fValid[index - 2] && fValid[index - 1] && fValid[index + 1] &&
-                       fValid[index + 2]
-                   ? 1
-                   : 2;
-    }
+        case ROOT::Math::Interpolation::kLINEAR: 
+        {
+            // we need just our point and closest neighbour, check already performed above
+            return 1;
+        }
+        case ROOT::Math::Interpolation::kCSPLINE:
+        case ROOT::Math::Interpolation::kCSPLINE_PERIODIC: 
+        {
+            // we need 3 points, check if we have them
+            if (index - 1 < 0 || index + 1 >= static_cast<int>(fX.size())) return 2;
+            return fValid[static_cast<uint>(index - 1)] && fValid[static_cast<uint>(index + 1)] ? 1 : 2;
+        }
+        default: 
+        {
+            // we need 5 points, check if we have them
+            if (index - 2 < 0 || index + 2 >= static_cast<int>(fX.size())) return 2;
+            return fValid[static_cast<uint>(index - 2)] && fValid[static_cast<uint>(index - 1)] && fValid[static_cast<uint>(index + 1)] && fValid[static_cast<uint>(index + 2)] ? 1 : 2;
+        }
     }
 }
 
@@ -192,14 +190,14 @@ bool TEC::CCMInterpolator::IsValueValid(const double x) const
 {
     int index = this->GetIndex(x);
     if (index == -1) return false;
-    return fValid[index];
+    return fValid[static_cast<uint>(index)];
 }
 
 double TEC::CCMInterpolator::Eval_noInterpolation(const double x)
 {
     int index = this->GetIndex(x);
     if (index == -1) return 0;
-    return fY[index];
+    return fY[static_cast<uint>(index)];
 }
 
 double TEC::CCMInterpolator::Eval(const double x)
@@ -211,13 +209,13 @@ double TEC::CCMInterpolator::Eval(const double x)
         fInterpolator = std::make_unique<ROOT::Math::Interpolator>(fX, fY, fType);
     }
 
-    const int index = this->GetIndex(x);
+    const int _index = this->GetIndex(x);
     // closest value is not valid, interpolation is invalid by default
-    if (index == -1) { return 0; }
-
+    if (_index == -1) { return 0; }
+    const uint index = static_cast<uint>(_index);
     // is interpolation possible? If no, get the closest value, if yes get interpolated
     // value
-    int valid = this->InterpolationValid(x, index);
+    int valid = this->InterpolationValid(x, _index);
     if (valid == 0) { return fY[index]; }
     if (valid == 1) { return fInterpolator->Eval(x); }
 
@@ -237,11 +235,11 @@ void TEC::CCMInterpolator::AddPoint(const double x, const double y, const bool v
     if (fX.size() != 0 && x < fX.back())
     {
         int index = 0;
-        for (int i = 0; i < fX.size(); i++)
+        for (uint i = 0; i < fX.size(); i++)
         {
             if (fX[i] > x)
             {
-                index = i;
+                index = static_cast<int>(i);
                 break;
             }
         }
