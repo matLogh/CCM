@@ -81,15 +81,12 @@ void adjust_peak_energy(std::shared_ptr<TH2> TEMAT, std::vector<float> &peak_arr
     TEMAT->GetYaxis()->SetRange(1, TEMAT->GetYaxis()->GetNbins());
     if (peak_array.size() < 3)
     {
-        std::cerr
-            << "Error: Peak array must contain at least 3 elements (position, min, max)."
-            << std::endl;
+        std::cerr << "Error: Peak array must contain at least 3 elements (position, min, max)." << std::endl;
         return;
     }
-    std::unique_ptr<TH1> proj(TEMAT->ProjectionY(
-        Form("adjust_roi_energy_%f", static_cast<double>(peak_array.at(0))),
-        TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(0)),
-        TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(1))));
+    std::unique_ptr<TH1> proj(TEMAT->ProjectionY(Form("adjust_roi_energy_%f", static_cast<double>(peak_array.at(0))),
+                                                 TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(0)),
+                                                 TEMAT->GetXaxis()->FindBin(gREFERENCE_TIME.at(1))));
     proj->SetDirectory(0);
     proj->GetXaxis()->SetRangeUser(peak_array.at(1), peak_array.at(2));
     auto mean = proj->GetMean();
@@ -104,8 +101,7 @@ void adjust_peak_energy(std::shared_ptr<TH2> TEMAT, std::vector<float> &peak_arr
     peak_array.at(0) = static_cast<float>(fitter.GetPeak(0)->GetPos());
 }
 
-void write_timeevo_agata_format(std::shared_ptr<CCM> corrections,
-                                std::string          fname = "TimeEvoCC.conf")
+void write_timeevo_agata_format(std::shared_ptr<CCM> corrections, std::string fname = "TimeEvoCC.conf")
 {
     assert(!fname.empty());
     std::ofstream file(fname);
@@ -115,8 +111,7 @@ void write_timeevo_agata_format(std::shared_ptr<CCM> corrections,
         return;
     }
 
-    std::cout << "Corrections for postPSAfilter are being written to: " << fname
-              << std::endl;
+    std::cout << "Corrections for postPSAfilter are being written to: " << fname << std::endl;
 
     auto matrix = corrections->GetInputMatrix();
     // const double time_low_edge = matrix->GetXaxis()->GetBinLowEdge(1);
@@ -128,8 +123,7 @@ void write_timeevo_agata_format(std::shared_ptr<CCM> corrections,
     double time;
 
     // Write the header
-    file << "#" << std::setw(21) << "TS_start" << std::setw(22) << "TS_end"
-         << std::setw(22) << "gain"
+    file << "#" << std::setw(21) << "TS_start" << std::setw(22) << "TS_end" << std::setw(22) << "gain"
          << "\n";
 
     for (int bin = 1; bin < matrix->GetXaxis()->GetNbins(); bin++)
@@ -143,17 +137,13 @@ void write_timeevo_agata_format(std::shared_ptr<CCM> corrections,
 
         if (fit.coef.size() != 1)
         {
-            file << std::fixed << std::setprecision(0) << std::setw(22)
-                 << (Long64_t)(TS_start * MINUTES_TO_TIMESTAMPS) << std::setw(22)
-                 << (Long64_t)(TS_end * MINUTES_TO_TIMESTAMPS) << std::setw(15) << 0.0
-                 << "\n";
+            file << std::fixed << std::setprecision(0) << std::setw(22) << (Long64_t)(TS_start * MINUTES_TO_TIMESTAMPS) << std::setw(22)
+                 << (Long64_t)(TS_end * MINUTES_TO_TIMESTAMPS) << std::setw(15) << 0.0 << "\n";
         }
         else
         {
-            file << std::fixed << std::setprecision(0) << std::setw(22)
-                 << (Long64_t)(TS_start * MINUTES_TO_TIMESTAMPS) << std::setw(22)
-                 << (Long64_t)(TS_end * MINUTES_TO_TIMESTAMPS) << std::fixed
-                 << std::setprecision(10) << std::setw(22) << fit.coef.front() << "\n";
+            file << std::fixed << std::setprecision(0) << std::setw(22) << (Long64_t)(TS_start * MINUTES_TO_TIMESTAMPS) << std::setw(22)
+                 << (Long64_t)(TS_end * MINUTES_TO_TIMESTAMPS) << std::fixed << std::setprecision(10) << std::setw(22) << fit.coef.front() << "\n";
         }
     }
 
@@ -175,11 +165,9 @@ struct ccm_settings
 
     static void print_header(std::ostream &os = std::cout)
     {
-        os << std::setw(10) << "Cost" << std::setw(8) << "RebX" << std::setw(8) << "RebY"
-           << std::setw(12) << "Gaussian" << std::setw(10) << "Valid" << std::setw(20)
-           << "InterpType" << std::setw(12) << "Smoothing" << std::setw(15)
-           << "SmootherType" << std::setw(12) << "SmoothPar" << std::setw(12)
-           << std::endl;
+        os << std::setw(10) << "Cost" << std::setw(8) << "RebX" << std::setw(8) << "RebY" << std::setw(12) << "Gaussian" << std::setw(10) << "Valid"
+           << std::setw(20) << "InterpType" << std::setw(12) << "Smoothing" << std::setw(15) << "SmootherType" << std::setw(12) << "SmoothPar"
+           << std::setw(12) << std::endl;
     }
 
     void print_values(std::ostream &os = std::cout) const
@@ -193,12 +181,10 @@ struct ccm_settings
         case TEC::SmootherType::SUPER: smoother_type_str = "SUPER"; break;
         }
 
-        os << std::setw(10) << std::setprecision(6) << this->cost << std::setw(8)
-           << this->temat_rebin_x << std::setw(8) << this->temat_rebin_y << std::setw(12)
-           << std::boolalpha << this->use_gaussian << std::setw(10) << this->valid_only
-           << std::setw(20) << this->interpolator_type << std::setw(12)
-           << this->interpolator_smoothing << std::setw(15) << smoother_type_str
-           << std::setw(12) << std::setprecision(5) << this->smoother_par << std::endl;
+        os << std::setw(10) << std::setprecision(6) << this->cost << std::setw(8) << this->temat_rebin_x << std::setw(8) << this->temat_rebin_y
+           << std::setw(12) << std::boolalpha << this->use_gaussian << std::setw(10) << this->valid_only << std::setw(20) << this->interpolator_type
+           << std::setw(12) << this->interpolator_smoothing << std::setw(15) << smoother_type_str << std::setw(12) << std::setprecision(5)
+           << this->smoother_par << std::endl;
     }
 };
 
@@ -212,26 +198,20 @@ double get_fwfm(TH1 *histo, const double center, const double min, const double 
     return fitter.GetPeak(0)->GetFWxM(5);
 }
 
-void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
-                            const ccm_settings  &settings,
-                            std::string          output_conffilename)
+void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &settings, std::string output_conffilename)
 {
-    std::cout << "Running final corrections for run " << gRUN << " with super settings..."
-              << std::endl;
+    std::cout << "Running final corrections for run " << gRUN << " with super settings..." << std::endl;
     settings.print_header(std::cout);
     settings.print_values(std::cout);
 
-    auto mr = TEMAT->Rebin2D(static_cast<int>(settings.temat_rebin_x),
-                             static_cast<int>(settings.temat_rebin_y),
-                             Form("%s_rebin_%ux_%uy", TEMAT->GetName(),
-                                  settings.temat_rebin_x, settings.temat_rebin_y));
+    auto mr = TEMAT->Rebin2D(static_cast<int>(settings.temat_rebin_x), static_cast<int>(settings.temat_rebin_y),
+                             Form("%s_rebin_%ux_%uy", TEMAT->GetName(), settings.temat_rebin_x, settings.temat_rebin_y));
 
     if (!mr) { throw std::runtime_error("Error: Rebinning TEMAT failed!"); }
     std::shared_ptr<TH2> rTEMAT = std::shared_ptr<TH2>(mr);
 
     std::vector<RegionOfInterest> ROIs;
-    ROIs.emplace_back(RegionOfInterest(rTEMAT, gROIarr.at(1), gROIarr.at(2),
-                                       gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
+    ROIs.emplace_back(RegionOfInterest(rTEMAT, gROIarr.at(1), gROIarr.at(2), gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
 
     std::shared_ptr<CCM> ccm_fix = nullptr;
 
@@ -240,15 +220,13 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
         // we need to "invent" the reference time or it may throw error if the time is
         // outside of this matrix range
         float stupid_ref_start = static_cast<float>(rTEMAT->GetXaxis()->GetBinLowEdge(1));
-        float stupid_ref_end   = static_cast<float>(
-            rTEMAT->GetXaxis()->GetBinUpEdge(rTEMAT->GetXaxis()->GetNbins()));
-        ccm_fix = std::make_shared<CCM>(rTEMAT, ROIs, stupid_ref_start, stupid_ref_end);
+        float stupid_ref_end   = static_cast<float>(rTEMAT->GetXaxis()->GetBinUpEdge(rTEMAT->GetXaxis()->GetNbins()));
+        ccm_fix                = std::make_shared<CCM>(rTEMAT, ROIs, stupid_ref_start, stupid_ref_end);
         ccm_fix->SetReferenceVector(0, gREFERENCE_VECTOR);
     }
     else
     {
-        ccm_fix = std::make_shared<CCM>(rTEMAT, ROIs, gREFERENCE_TIME.at(0),
-                                        gREFERENCE_TIME.at(1));
+        ccm_fix = std::make_shared<CCM>(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
     }
 
     // CCM ccm_fix(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
@@ -265,21 +243,14 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
         ccm_fix->UsePolynomialResult();
     }
 
-    if (settings.interpolator_type.empty() && !settings.interpolator_smoothing)
-    {
-        ccm_fix->DisableInterpolation();
-    }
+    if (settings.interpolator_type.empty() && !settings.interpolator_smoothing) { ccm_fix->DisableInterpolation(); }
     if (!settings.interpolator_type.empty() && !settings.interpolator_smoothing)
     {
         ccm_fix->EnableInterpolation();
-        ccm_fix->ConfigureShiftInterpolator(settings.interpolator_type,
-                                            settings.valid_only);
+        ccm_fix->ConfigureShiftInterpolator(settings.interpolator_type, settings.valid_only);
     }
 
-    if (settings.interpolator_smoothing)
-    {
-        ccm_fix->SmoothShifts(settings.smoother_type, settings.smoother_par);
-    }
+    if (settings.interpolator_smoothing) { ccm_fix->SmoothShifts(settings.smoother_type, settings.smoother_par); }
 
     write_timeevo_agata_format(ccm_fix, output_conffilename);
 
@@ -307,13 +278,10 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
             std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
             TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
             auto        shifts    = ccm_fix->GetROIShifts(0);
-            auto        profile   = ccm_fix->GetInterpolationGraph(
-                0, static_cast<int>(settings.temat_rebin_x), true);
+            auto        profile   = ccm_fix->GetInterpolationGraph(0, static_cast<int>(settings.temat_rebin_x), true);
 
-            TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
-                                                  gROIarr.at(2) + gROIarr.at(4));
-            TEMAT->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3),
-                                            gROIarr.at(2) + gROIarr.at(4));
+            TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3), gROIarr.at(2) + gROIarr.at(4));
+            TEMAT->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3), gROIarr.at(2) + gROIarr.at(4));
 
             TEMAT->Write();
             proj->Write();
@@ -324,9 +292,9 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT,
     }
 }
 
-std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2> original_TEMAT,
-                                              std::shared_ptr<CCM>       ccm_fix,
-                                              ccm_settings               settings,
+std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2>          original_TEMAT,
+                                              std::shared_ptr<CCM>                ccm_fix,
+                                              ccm_settings                        settings,
                                               const std::function<double(TH1 *)> &costFcn)
 {
     std::vector<ccm_settings> results;
@@ -433,8 +401,8 @@ std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2> origina
                 ccm_fix->SmoothShifts(smoother, par);
 
                 auto        TEMAT_fixed = ccm_fix->FixMatrix(original_TEMAT.get());
-                std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
-                TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
+                std::string proj_name   = "projY_" + get_pointer_string(TEMAT_fixed.get());
+                TH1        *proj        = TEMAT_fixed->ProjectionY(proj_name.c_str());
                 proj->SetDirectory(0);
                 double cost   = costFcn(proj);
                 settings.cost = cost;
@@ -447,8 +415,7 @@ std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2> origina
     return results;
 }
 
-std::vector<ccm_settings> ccm_optimizer_global(
-    const std::shared_ptr<TH2> TEMAT, const std::function<double(TH1 *)> &costFcn)
+std::vector<ccm_settings> ccm_optimizer_global(const std::shared_ptr<TH2> TEMAT, const std::function<double(TH1 *)> &costFcn)
 {
     std::vector<ccm_settings> global_results;
 
@@ -468,24 +435,16 @@ std::vector<ccm_settings> ccm_optimizer_global(
             if (rebinX == 1 && rebinY == 1) { rTEMAT = TEMAT; }
             else
             {
-                rTEMAT = std::shared_ptr<TH2>(TEMAT->Rebin2D(
-                    static_cast<int>(s.temat_rebin_x), static_cast<int>(s.temat_rebin_y),
-                    Form("%s_rebin_%ux_%uy", TEMAT->GetName(), s.temat_rebin_x,
-                         s.temat_rebin_y)));
+                rTEMAT = std::shared_ptr<TH2>(TEMAT->Rebin2D(static_cast<int>(s.temat_rebin_x), static_cast<int>(s.temat_rebin_y),
+                                                             Form("%s_rebin_%ux_%uy", TEMAT->GetName(), s.temat_rebin_x, s.temat_rebin_y)));
             }
 
-            if (rTEMAT.get() == nullptr)
-            {
-                throw std::runtime_error("Error: Rebinning TEMAT failed!");
-            }
+            if (rTEMAT.get() == nullptr) { throw std::runtime_error("Error: Rebinning TEMAT failed!"); }
 
             std::vector<RegionOfInterest> ROIs;
-            ROIs.emplace_back(RegionOfInterest(rTEMAT, gROIarr.at(1), gROIarr.at(2),
-                                               gROIarr.at(3), gROIarr.at(4),
-                                               gROIarr.at(0)));
+            ROIs.emplace_back(RegionOfInterest(rTEMAT, gROIarr.at(1), gROIarr.at(2), gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
 
-            std::shared_ptr<CCM> ccm_fix = std::make_shared<CCM>(
-                rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
+            std::shared_ptr<CCM> ccm_fix = std::make_shared<CCM>(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
 
             auto res = ccm_local_optimizer(rTEMAT, ccm_fix, s, costFcn);
 
@@ -565,15 +524,12 @@ void set_reference_vector(const int ref_run)
     TFile *matfile = TFile::Open(reference_root_file.c_str(), "READ");
     if (!matfile || matfile->IsZombie())
     {
-        throw std::runtime_error(
-            "Error! could not open/find the old/REFERENCE ROOT file " +
-            reference_root_file + " file");
+        throw std::runtime_error("Error! could not open/find the old/REFERENCE ROOT file " + reference_root_file + " file");
     }
     std::shared_ptr<TH2> TEMAT_original((TH2 *)matfile->Get(gMATRIX_NAME.c_str()));
 
     std::vector<RegionOfInterest> ROIs;
-    ROIs.emplace_back(RegionOfInterest(TEMAT_original, gROIarr.at(1), gROIarr.at(2),
-                                       gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
+    ROIs.emplace_back(RegionOfInterest(TEMAT_original, gROIarr.at(1), gROIarr.at(2), gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
     CCM ccm_fix(TEMAT_original, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
     gREFERENCE_VECTOR = ccm_fix.GetReferenceVector(0);
 }
@@ -590,10 +546,7 @@ void parse_args(int argc, char **argv)
             print_help();
             exit(0);
         }
-        else if (arg == "--fit_peak")
-        {
-            gFIT_PEAK = parse_space_separated_floats(i, argc, argv, 3);
-        }
+        else if (arg == "--fit_peak") { gFIT_PEAK = parse_space_separated_floats(i, argc, argv, 3); }
         else if (arg == "--crystal" || arg == "--crys")
         {
             if (i + 1 < argc) { gCRYSTAL = argv[++i]; }
@@ -615,15 +568,10 @@ void parse_args(int argc, char **argv)
                     }
                     catch (const std::invalid_argument &)
                     {
-                        throw std::runtime_error(
-                            "Invalid integer value for --chain_runs");
+                        throw std::runtime_error("Invalid integer value for --chain_runs");
                     }
                 }
-                if (gCHAIN_RUNS.empty())
-                {
-                    throw std::runtime_error(
-                        "--chain_runs must be followed by at least one integer");
-                }
+                if (gCHAIN_RUNS.empty()) { throw std::runtime_error("--chain_runs must be followed by at least one integer"); }
             }
             else
             {
@@ -694,13 +642,11 @@ void parse_args(int argc, char **argv)
         }
         else if (arg == "--ROI")
         {
-            gROIarr =
-                parse_space_separated_floats(i, argc, argv, 5); // Expecting 5 floats
+            gROIarr = parse_space_separated_floats(i, argc, argv, 5); // Expecting 5 floats
         }
         else if (arg == "--ref_time")
         {
-            gREFERENCE_TIME =
-                parse_space_separated_floats(i, argc, argv, 2); // Expecting 2 floats
+            gREFERENCE_TIME = parse_space_separated_floats(i, argc, argv, 2); // Expecting 2 floats
         }
         else if (arg == "--super_settings") { gUSE_SUPER_SETTINGS = true; }
         else
@@ -734,8 +680,7 @@ void parse_args(int argc, char **argv)
     if (gROIarr.size() != 5)
     {
         print_help();
-        throw std::runtime_error("--ROI must have exactly 5 float values, but it has " +
-                                 std::to_string(gROIarr.size()));
+        throw std::runtime_error("--ROI must have exactly 5 float values, but it has " + std::to_string(gROIarr.size()));
     }
     if (gREFERENCE_TIME.size() != 2)
     {
@@ -746,9 +691,8 @@ void parse_args(int argc, char **argv)
     if (gFIT_PEAK.size() != 3 && !gUSE_SUPER_SETTINGS)
     {
         print_help();
-        throw std::runtime_error(
-            "if running without --super_settings flag, grid search for optimal "
-            "parameters is used and thus --fit_peak must be defined");
+        throw std::runtime_error("if running without --super_settings flag, grid search for optimal "
+                                 "parameters is used and thus --fit_peak must be defined");
     }
 
     // Set default root file and matrix name as produced by
@@ -775,10 +719,11 @@ void parse_args(int argc, char **argv)
     std::cout << "  Fit Peak: ";
     for (const auto &val : gFIT_PEAK) { std::cout << val << " "; }
     std::cout << std::endl;
-    std::cout << "  Use Super Settings: " << std::boolalpha << gUSE_SUPER_SETTINGS
-              << std::endl;
-    std::cout << "Output configuration file will be saved to: "
-              << get_conffilename(gDIR, gRUN, gCRYSTAL) << std::endl;
+    std::cout << "  Use Super Settings: " << std::boolalpha << gUSE_SUPER_SETTINGS << std::endl;
+    auto conffile = get_conffilename(gDIR, gRUN, gCRYSTAL);
+
+    std::cout << "Output configuration file will be saved to: " << conffile << std::endl;
+    if (!can_create_file(conffile)) throw std::runtime_error("Problem with creating output configuration file\n");
 }
 
 void run_chained_runs(const ccm_settings &optimal_settings)
@@ -796,22 +741,15 @@ void run_chained_runs(const ccm_settings &optimal_settings)
         std::string c_rootfile = get_rootfilename(gDIR, c_run, gCRYSTAL);
 
         TFile *matfile = TFile::Open(c_rootfile.c_str(), "READ");
-        if (!matfile || matfile->IsZombie())
-        {
-            throw std::runtime_error("Error! could not open/find the " + c_rootfile +
-                                     " file");
-        }
+        if (!matfile || matfile->IsZombie()) { throw std::runtime_error("Error! could not open/find the " + c_rootfile + " file"); }
         // matrix name is the same, we can use gMATRIX_NAME
         std::shared_ptr<TH2> TEMAT_original((TH2 *)matfile->Get(gMATRIX_NAME.c_str()));
-        if (!TEMAT_original)
-        {
-            throw std::runtime_error("Error! could not open/find the " + gMATRIX_NAME +
-                                     " matrix");
-        }
+        if (!TEMAT_original) { throw std::runtime_error("Error! could not open/find the " + gMATRIX_NAME + " matrix"); }
 
         // set conf path for output file
         std::string conf_filename = get_conffilename(gDIR, c_run, gCRYSTAL);
-        gRUN                      = c_run;
+        if (!can_create_file(conf_filename)) throw std::runtime_error("Problem with creating output configuration file\n");
+        gRUN = c_run;
         std::cout << std::endl << "Running chained run: " << c_run << std::endl;
         run_ccm_super_settings(TEMAT_original, optimal_settings, conf_filename);
     }
@@ -826,16 +764,9 @@ int main(int argc, char **argv)
     // ROOT::EnableThreadSafety();
 
     TFile *matfile = TFile::Open(gROOTFILE.c_str(), "READ");
-    if (!matfile || matfile->IsZombie())
-    {
-        throw std::runtime_error("Error! could not open/find the " + gROOTFILE + " file");
-    }
+    if (!matfile || matfile->IsZombie()) { throw std::runtime_error("Error! could not open/find the " + gROOTFILE + " file"); }
     std::shared_ptr<TH2> TEMAT_original((TH2 *)matfile->Get(gMATRIX_NAME.c_str()));
-    if (!TEMAT_original)
-    {
-        throw std::runtime_error("Error! could not open/find the " + gMATRIX_NAME +
-                                 " matrix");
-    }
+    if (!TEMAT_original) { throw std::runtime_error("Error! could not open/find the " + gMATRIX_NAME + " matrix"); }
 
     adjust_peak_energy(TEMAT_original, gROIarr);
     std::cout << "Adjusted ROI energy to: " << gROIarr.at(0) << std::endl;
@@ -855,8 +786,7 @@ int main(int argc, char **argv)
         gSUPER_SETTINGS.smoother_par           = -1;
         gSUPER_SETTINGS.cost                   = std::numeric_limits<double>::quiet_NaN();
 
-        run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS,
-                               get_conffilename(gDIR, gRUN, gCRYSTAL));
+        run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS, get_conffilename(gDIR, gRUN, gCRYSTAL));
         if (gREFERENCE_RUN != -1) { run_chained_runs(gSUPER_SETTINGS); }
         return 0;
     }
@@ -866,13 +796,10 @@ int main(int argc, char **argv)
 
     auto start = high_resolution_clock::now();
 
-    auto result =
-        ccm_optimizer_global(std::shared_ptr<TH2>(TEMAT_original), [&](TH1 *histo) {
-            return get_fwfm(histo, gFIT_PEAK.at(0), gFIT_PEAK.at(1), gFIT_PEAK.at(2));
-        });
+    auto result = ccm_optimizer_global(std::shared_ptr<TH2>(TEMAT_original),
+                                       [&](TH1 *histo) { return get_fwfm(histo, gFIT_PEAK.at(0), gFIT_PEAK.at(1), gFIT_PEAK.at(2)); });
 
-    std::sort(result.begin(), result.end(),
-              [](const auto &a, const auto &b) { return a.cost < b.cost; });
+    std::sort(result.begin(), result.end(), [](const auto &a, const auto &b) { return a.cost < b.cost; });
 
     auto stop     = high_resolution_clock::now();
     auto duration = duration_cast<milliseconds>(stop - start);
@@ -881,20 +808,14 @@ int main(int argc, char **argv)
     ccm_settings::print_header(std::cout);
     for (const auto &r : result) { r.print_values(std::cout); }
 
-    std::string minimization_file = gDIR + "/diagnostic/" + "CCMconf_r" +
-                                    std::to_string(gRUN) + "_" + gCRYSTAL + ".txt";
+    std::string  minimization_file = gDIR + "/diagnostic/" + "CCMconf_r" + std::to_string(gRUN) + "_" + gCRYSTAL + ".txt";
     std::fstream out_file(minimization_file.c_str(), std::ios::out);
-    if (!out_file)
-    {
-        std::cerr << "Error opening CCM conf file: " << minimization_file
-                  << "  for writing" << std::endl;
-    }
+    if (!out_file) { std::cerr << "Error opening CCM conf file: " << minimization_file << "  for writing" << std::endl; }
     ccm_settings::print_header(out_file);
     for (const auto &r : result) { r.print_values(out_file); }
 
     gSUPER_SETTINGS = result.front();
-    run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS,
-                           get_conffilename(gDIR, gRUN, gCRYSTAL));
+    run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS, get_conffilename(gDIR, gRUN, gCRYSTAL));
     run_chained_runs(gSUPER_SETTINGS);
 
     return 0;
