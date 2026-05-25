@@ -22,13 +22,13 @@ class CCMInterpolator
   public:
     CCMInterpolator();
     /// @brief Interpolator constructor, default type is kLINEAR. List of available types:
-    // LINEAR interpolation between 2 neighbours;
+    // LINEAR interpolation between 2 neighbors;
     // CSPLINE cubic spline with natural boundary conditions;
     // CSPLINE_PERIODIC cubic spline with periodic boundary conditions;
     // AKIMA, Akima spline with natural boundary conditions ( requires a minimum of 5
     // points); AKIMA_PERIODIC, Akima spline with periodic boundaries ( requires a minimum
     // of 5 points);
-    // Note: POLYNOMIAL interpolation is disabled becasue it introduces HUGE oscillations
+    // Note: POLYNOMIAL interpolation is disabled because it introduces HUGE oscillations
     // for more than just a few points
     /// @param type
     CCMInterpolator(const std::string &type, bool valid_only = true);
@@ -64,8 +64,7 @@ class CCMInterpolator
     void Reset();
     void ClearPoints();
     void SetType(std::string type, const bool valid_only = true);
-    void SetType(const ROOT::Math::Interpolation::Type type,
-                 const bool                            valid_only = true);
+    void SetType(const ROOT::Math::Interpolation::Type type, const bool valid_only = true);
 
   private:
     std::unique_ptr<ROOT::Math::Interpolator> fInterpolator{nullptr};
