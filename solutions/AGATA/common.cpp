@@ -35,13 +35,15 @@ bool can_create_file(const std::string &path)
         std::filesystem::path file_path(path);
         std::filesystem::path dir_path = file_path.parent_path();
 
+        // If the file already exists, do not touch it.
+        if (std::filesystem::exists(file_path)) { return true; }
+
         // Check if the directory exists
         if (!dir_path.empty() && !std::filesystem::exists(dir_path))
         {
             if (!std::filesystem::create_directories(dir_path))
             {
-                std::cerr << "Error: Unable to create directory: " << dir_path
-                          << std::endl;
+                std::cerr << "Error: Unable to create directory: " << dir_path << std::endl;
                 return false;
             }
         }
@@ -69,17 +71,13 @@ bool can_create_file(const std::string &path)
 
 int get_crystal_id(const std::string &input)
 {
-    if (input.size() != 3 || !std::isdigit(static_cast<unsigned char>(input[0])) ||
-        !std::isdigit(static_cast<unsigned char>(input[1])) ||
+    if (input.size() != 3 || !std::isdigit(static_cast<unsigned char>(input[0])) || !std::isdigit(static_cast<unsigned char>(input[1])) ||
         !std::isalpha(static_cast<unsigned char>(input[2])))
     {
-        throw std::invalid_argument(
-            "Input must be a 3-character string with 2 digits followed by a letter.");
+        throw std::invalid_argument("Input must be a 3-character string with 2 digits followed by a letter.");
     }
 
-    int number =
-        (input[0] - '0') * 10 +
-        (input[1] - '0'); // Combine the first two characters into a single integer
+    int  number = (input[0] - '0') * 10 + (input[1] - '0'); // Combine the first two characters into a single integer
     char letter = static_cast<char>(std::toupper(static_cast<unsigned char>(input[2])));
     // Extract the third character as the letter
 
@@ -149,19 +147,11 @@ std::vector<std::string> parse_space_separated_crystals(int &i, int argc, char *
     while (i + 1 < argc && std::string(argv[i + 1]).size() == 3)
     {
         std::string cry = argv[i + 1];
-        if (!(cry.size() == 3 && std::isdigit(cry[0]) && std::isdigit(cry[1]) &&
-              (cry[2] == 'A' || cry[2] == 'B' || cry[2] == 'C')))
-        {
-            break;
-        }
-        if (std::find(crystals.begin(), crystals.end(), argv[i + 1]) == crystals.end())
-        {
-            crystals.emplace_back(argv[++i]);
-        }
+        if (!(cry.size() == 3 && std::isdigit(cry[0]) && std::isdigit(cry[1]) && (cry[2] == 'A' || cry[2] == 'B' || cry[2] == 'C'))) { break; }
+        if (std::find(crystals.begin(), crystals.end(), argv[i + 1]) == crystals.end()) { crystals.emplace_back(argv[++i]); }
         else
         {
-            std::cerr << "Crystal " << argv[i + 1] << " already specified. Skipping."
-                      << std::endl;
+            std::cerr << "Crystal " << argv[i + 1] << " already specified. Skipping." << std::endl;
             continue;
         }
     }
@@ -171,8 +161,7 @@ std::vector<std::string> parse_space_separated_crystals(int &i, int argc, char *
 void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &fit_peak)
 {
     std::string source = argv;
-    std::transform(source.begin(), source.end(), source.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
+    std::transform(source.begin(), source.end(), source.begin(), [](unsigned char c) { return std::tolower(c); });
     if (source.compare("60co") == 0 || source.compare("co60") == 0)
     {
         ROI      = {1332.492, 1300., 1370., -20, 20}; // Example values for 60Co
@@ -202,40 +191,50 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
         ROI      = {2751.835, 2720., 2780., -90, 50};
         fit_peak = {4295.187, 4220., 4360.};
     }
-    else if (source.compare("56co") == 0 || source.compare("co56") == 0)
-    {
-        throw std::runtime_error("56Co source is not implemented yet");
-    }
-    else if (source.compare("22na") == 0 || source.compare("na22") == 0)
-    {
-        throw std::runtime_error("Na-22 source is not implemented yet");
-    }
-    else if (source.compare("cs137") == 0 || source.compare("137cs") == 0)
-    {
-        throw std::runtime_error("Cs-137 source is not implemented yet");
-    }
+    else if (source.compare("56co") == 0 || source.compare("co56") == 0) { throw std::runtime_error("56Co source is not implemented yet"); }
+    else if (source.compare("22na") == 0 || source.compare("na22") == 0) { throw std::runtime_error("Na-22 source is not implemented yet"); }
+    else if (source.compare("cs137") == 0 || source.compare("137cs") == 0) { throw std::runtime_error("Cs-137 source is not implemented yet"); }
     else
     {
         throw std::runtime_error("Unknown source: " + source);
     }
 }
 
-std::string get_conffilename(const std::string &dir,
-                             const int          run,
-                             const std::string &crystal)
+std::string get_conffilename(const std::string &dir, const int run, const std::string &crystal)
 {
-    std::string conffile =
-        dir + "/" + "run_" + fourCharInt(run) + "/Conf/" + crystal + "/TimeEvoCC.conf";
-    if (!can_create_file(conffile))
-        throw std::runtime_error("Problem with creating output configuration file\n");
+    std::string conffile = dir + "/" + "run_" + fourCharInt(run) + "/Conf/" + crystal + "/TimeEvoCC.conf";
     return conffile;
 }
 
-std::string get_rootfilename(const std::string &dir,
-                             const int          run,
-                             const std::string &crystal)
+std::string get_rootfilename(const std::string &dir, const int run, const std::string &crystal)
 {
     return dir + "/temat_" + fourCharInt(run) + "_" + crystal + ".root";
 }
 
 std::string get_matrixname(const std::string &crystal) { return "hE0_TS_" + crystal; }
+
+void bckp_conf_file(const std::string &infile, std::string &outfile)
+{
+    if (infile.empty() || outfile.empty())
+    {
+        std::cerr << "Error: infile or outfile is empty!" << std::endl;
+        return;
+    }
+
+    std::ifstream src(infile);
+    std::ofstream dst(outfile);
+    if (!src.is_open())
+    {
+        std::cerr << "Error opening source file: " << infile << std::endl;
+        return;
+    }
+    if (!dst.is_open())
+    {
+        std::cerr << "Error opening destination file: " << outfile << std::endl;
+        return;
+    }
+
+    dst << src.rdbuf();
+    src.close();
+    dst.close();
+}
