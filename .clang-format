@@ -15,7 +15,7 @@ AllowShortLoopsOnASingleLine: 'true'
 AlwaysBreakBeforeMultilineStrings: 'false'
 AlwaysBreakTemplateDeclarations: 'Yes'
 BinPackParameters: 'false'
-ColumnLimit: '90'
+ColumnLimit: '150'
 PointerAlignment: Right
 SpaceAfterLogicalNot: 'false'
 SpaceBeforeAssignmentOperators: 'true'
