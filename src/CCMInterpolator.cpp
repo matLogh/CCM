@@ -2,25 +2,16 @@
 
 TEC::CCMInterpolator::CCMInterpolator() { this->SetType("akima", true); }
 
-TEC::CCMInterpolator::CCMInterpolator(const std::string &type, bool valid_only)
-{
-    this->SetType(type, valid_only);
-}
+TEC::CCMInterpolator::CCMInterpolator(const std::string &type, bool valid_only) { this->SetType(type, valid_only); }
 
-TEC::CCMInterpolator::CCMInterpolator(ROOT::Math::Interpolation::Type type,
-                                      bool                            valid_only)
-{
-    this->SetType(type, valid_only);
-}
+TEC::CCMInterpolator::CCMInterpolator(ROOT::Math::Interpolation::Type type, bool valid_only) { this->SetType(type, valid_only); }
 
-void TEC::CCMInterpolator::SetType(const ROOT::Math::Interpolation::Type type,
-                                   const bool                            valid_only)
+void TEC::CCMInterpolator::SetType(const ROOT::Math::Interpolation::Type type, const bool valid_only)
 {
     if (type == ROOT::Math::Interpolation::kPOLYNOMIAL)
     {
-        throw std::runtime_error(
-            "Polynomial interpolation is disabled on purpose, it produces unphysical "
-            "results! Use AKIMA or CSPLINE instead.");
+        throw std::runtime_error("Polynomial interpolation is disabled on purpose, it produces unphysical "
+                                 "results! Use AKIMA or CSPLINE instead.");
     }
     fType                    = type;
     fInterpolator            = nullptr;
@@ -41,12 +32,11 @@ TEC::CCMInterpolator::CCMInterpolator(const TEC::CCMInterpolator &other)
     this->fValid = other.fValid;
 
     // making copy of interpolator is not public method
-    if (other.fInterpolator)
+    if (other.fInterpolator) { this->fInterpolator = std::make_unique<ROOT::Math::Interpolator>(this->fX, this->fY, this->fType); }
+    else
     {
-        this->fInterpolator =
-            std::make_unique<ROOT::Math::Interpolator>(this->fX, this->fY, this->fType);
+        this->fInterpolator = nullptr;
     }
-    else { this->fInterpolator = nullptr; }
 }
 
 TEC::CCMInterpolator &TEC::CCMInterpolator::operator=(const TEC::CCMInterpolator &other)
@@ -64,12 +54,11 @@ TEC::CCMInterpolator &TEC::CCMInterpolator::operator=(const TEC::CCMInterpolator
         this->fValid = other.fValid;
 
         // making copy of interpolator is not public method
-        if (other.fInterpolator)
+        if (other.fInterpolator) { this->fInterpolator = std::make_unique<ROOT::Math::Interpolator>(this->fX, this->fY, this->fType); }
+        else
         {
-            this->fInterpolator = std::make_unique<ROOT::Math::Interpolator>(
-                this->fX, this->fY, this->fType);
+            this->fInterpolator = nullptr;
         }
-        else { this->fInterpolator = nullptr; }
     }
     return *this;
 }
@@ -85,15 +74,9 @@ void TEC::CCMInterpolator::SetType(std::string type, const bool valid_only)
     // polynomial interpolation is not useful due to large oscillations
     // else if (type == "polynomial") { _type = ROOT::Math::Interpolation::kPOLYNOMIAL; }
     else if (type == "cspline") { _type = ROOT::Math::Interpolation::kCSPLINE; }
-    else if (type == "cspline_periodic")
-    {
-        _type = ROOT::Math::Interpolation::kCSPLINE_PERIODIC;
-    }
+    else if (type == "cspline_periodic") { _type = ROOT::Math::Interpolation::kCSPLINE_PERIODIC; }
     else if (type == "akima") { _type = ROOT::Math::Interpolation::kAKIMA; }
-    else if (type == "akima_periodic")
-    {
-        _type = ROOT::Math::Interpolation::kAKIMA_PERIODIC;
-    }
+    else if (type == "akima_periodic") { _type = ROOT::Math::Interpolation::kAKIMA_PERIODIC; }
     else
     {
         std::string err_msg = "Unknown interpolation type: " + type;
@@ -146,16 +129,23 @@ int TEC::CCMInterpolator::InterpolationValid(const double x, const int index) co
     // int    index = this->GetIndex(x);
     if (index < 0 || index >= static_cast<int>(fX.size()))
     {
-        throw std::runtime_error(
-            "TEC::CCMInterpolator::InterpolationValid: Error! Index out of bounds");
+        throw std::runtime_error("TEC::CCMInterpolator::InterpolationValid: Error! Index out of bounds");
     }
     double diff = x - fX[static_cast<uint>(index)];
 
     // check if the closest point is valid
     if (!fValid[static_cast<uint>(index)]) return 0;
 
-    if (diff < 0 && !fValid[static_cast<uint>(index) - 1]) return 0;
-    if (diff > 0 && !fValid[static_cast<uint>(index) + 1]) return 0;
+    if (diff < 0)
+    {
+        if (index - 1 < 0) return 2;
+        if (!fValid[static_cast<uint>(index) - 1]) return 0;
+    }
+    if (diff > 0)
+    {
+        if (index + 1 >= static_cast<int>(fX.size())) return 2;
+        if (!fValid[static_cast<uint>(index) + 1]) return 0;
+    }
 
     // interpolating before first point in array
     // if (index == 0 && diff < 0) return false;
@@ -165,24 +155,24 @@ int TEC::CCMInterpolator::InterpolationValid(const double x, const int index) co
     // check validity of just closest neighbour
     switch (fType)
     {
-        case ROOT::Math::Interpolation::kLINEAR: 
-        {
-            // we need just our point and closest neighbour, check already performed above
-            return 1;
-        }
-        case ROOT::Math::Interpolation::kCSPLINE:
-        case ROOT::Math::Interpolation::kCSPLINE_PERIODIC: 
-        {
-            // we need 3 points, check if we have them
-            if (index - 1 < 0 || index + 1 >= static_cast<int>(fX.size())) return 2;
-            return fValid[static_cast<uint>(index - 1)] && fValid[static_cast<uint>(index + 1)] ? 1 : 2;
-        }
-        default: 
-        {
-            // we need 5 points, check if we have them
-            if (index - 2 < 0 || index + 2 >= static_cast<int>(fX.size())) return 2;
-            return fValid[static_cast<uint>(index - 2)] && fValid[static_cast<uint>(index - 1)] && fValid[static_cast<uint>(index + 1)] && fValid[static_cast<uint>(index + 2)] ? 1 : 2;
-        }
+    case ROOT::Math::Interpolation::kLINEAR: {
+        // we need just our point and closest neighbour, check already performed above
+        return 1;
+    }
+    case ROOT::Math::Interpolation::kCSPLINE:
+    case ROOT::Math::Interpolation::kCSPLINE_PERIODIC: {
+        // we need 3 points, check if we have them
+        if (index - 1 < 0 || index + 1 >= static_cast<int>(fX.size())) return 2;
+        return fValid[static_cast<uint>(index - 1)] && fValid[static_cast<uint>(index + 1)] ? 1 : 2;
+    }
+    default: {
+        // we need 5 points, check if we have them
+        if (index - 2 < 0 || index + 2 >= static_cast<int>(fX.size())) return 2;
+        return fValid[static_cast<uint>(index - 2)] && fValid[static_cast<uint>(index - 1)] && fValid[static_cast<uint>(index + 1)] &&
+                       fValid[static_cast<uint>(index + 2)]
+                   ? 1
+                   : 2;
+    }
     }
 }
 
@@ -204,10 +194,7 @@ double TEC::CCMInterpolator::Eval(const double x)
 {
     if (!fEnableInterpolation) return Eval_noInterpolation(x);
 
-    if (!fInterpolator)
-    {
-        fInterpolator = std::make_unique<ROOT::Math::Interpolator>(fX, fY, fType);
-    }
+    if (!fInterpolator) { fInterpolator = std::make_unique<ROOT::Math::Interpolator>(fX, fY, fType); }
 
     const int _index = this->GetIndex(x);
     // closest value is not valid, interpolation is invalid by default
@@ -222,11 +209,13 @@ double TEC::CCMInterpolator::Eval(const double x)
     // return val is 2, if we cannot do selected interpolation, but simple linear
     // interpolation is possible
     double diff = x - fX[index];
+    if (diff == 0) { return fY[index]; }
     if (diff < 0)
     {
-        return fY[index] +
-               (fY[index] - fY[index - 1]) / (fX[index] - fX[index - 1]) * diff;
+        if (index == 0) { return fY[index]; }
+        return fY[index] + (fY[index] - fY[index - 1]) / (fX[index] - fX[index - 1]) * diff;
     }
+    if (index + 1 >= fY.size()) { return fY[index]; }
     return fY[index] + (fY[index + 1] - fY[index]) / (fX[index + 1] - fX[index]) * diff;
 }
 
