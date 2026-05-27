@@ -105,9 +105,10 @@ include(${ROOT_USE_FILE})
 include_directories(SYSTEM ${ROOT_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-link_libraries(stdc++fs)
-
-
+set(CCM_FILESYSTEM_LIB "")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
+    set(CCM_FILESYSTEM_LIB stdc++fs)
+endif()
 
 add_definitions("-DDATA_PATH=\"${PROJECT_SOURCE_DIR}\"")
 

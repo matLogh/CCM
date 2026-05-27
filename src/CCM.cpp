@@ -5,21 +5,22 @@ list of throw exceptions:
 2 = normalization of sample vector error = its field of zeroes
 3 = vectors in dot product are not the same size
 */
-#include <algorithm> // copy
+#include <algorithm>
 #include <atomic>
-#include <bits/stdc++.h>
-#include <fstream> //open file
+#include <cassert>
+#include <cmath>
+#include <cstring>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <mutex>
-#include <sstream>
-#include <stdexcept> // std::out_of_range
-#include <stdio.h>   //strcat
+#include <stdexcept>
 #include <string>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <thread>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #pragma GCC diagnostic push
