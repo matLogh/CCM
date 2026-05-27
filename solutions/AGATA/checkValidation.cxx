@@ -28,7 +28,7 @@ std::string gDIR{""};
 const int gMINIMUM_NUMBER_OF_HOLES_TO_IGNORE = 2;
 bool      gMODIFY_TIMEEVO_CONF               = false;
 bool      gDRAW_CUTS                         = true;
-double    gTHRESHOLD                         = 0.5;
+double    gTHRESHOLD                         = 0.7;
 bool      gPRINTDEAD                         = false;
 
 std::vector<std::shared_ptr<TObject>> gROOTOBJECTS;
@@ -269,7 +269,7 @@ double calculate_cut_padding(const std::vector<std::pair<double, double>> &cut_t
 /// @param temat
 /// @param average_threshold
 /// @return
-std::vector<std::pair<double, double>> getMissingValidation(const std::shared_ptr<TH2> temat, const double average_threshold = 0.5)
+std::vector<std::pair<double, double>> getMissingValidation(const std::shared_ptr<TH2> temat, const double average_threshold = 0.7)
 {
     assert(average_threshold > 0.0 && average_threshold < 1.);
 
@@ -341,7 +341,7 @@ void print_help()
               << "  --allcrys                Use all crystals\n"
               << "  --dir <directory>        Specify data directory\n"
               << "  --threshold <value>      Valid bin content threshold calculated using threshold factor multiplied average integral for given "
-                 "detector (default: 0.5)\n"
+                 "detector (default: 0.7)\n"
               << "  --nodraw                 Do not draw missing-validation cut windows\n"
               << "  --printdead              If validation holes are found, print their duration in seconds starting from first non-zero bin\n"
               << "  --modify-conf            If holes are found, put zero gain in overlapping "
@@ -562,7 +562,8 @@ int main(int argc, char **argv)
                 double sec_stop  = (ts_stop - static_cast<double>(ts_offset)) * 60.;
                 if (sec_start < 0) sec_start = 0;
                 if (sec_stop < 0) continue;
-                std::cout << "DEAD_INTERVAL" << std::setprecision(10) << std::setw(32) << sec_start << std::setw(22) << sec_stop << "\n";
+                std::cout << "DEAD_INTERVAL                   " << std::setprecision(1) << std::setw(10) << sec_start << " " << std::setw(10)
+                          << sec_stop << "\n";
             }
         }
         std::cout << "-------------------------DONE----------------------------------" << std::endl;
