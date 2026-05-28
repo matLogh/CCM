@@ -59,6 +59,11 @@ endif()
 # ============================================================================
 
 option(BUILD_EXAMPLES "Build example applications" ON)
+option(BUILD_SOLUTION_AGATA "Build AGATA solution applications" ON)
+option(BUILD_SOLUTION_ILL "Build ILL solution applications" ON)
+option(BUILD_SOLUTION_PRISMA "Build PRISMA solution applications" ON)
+option(BUILD_SOLUTION_OSCAR "Build OSCAR solution applications" ON)
+option(BUILD_SOLUTION_SIMPLE_EXAMPLE "Build simple example solution application" ON)
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 
 # Helper function to apply strict warnings to CCM code
@@ -98,6 +103,13 @@ message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  CXX Compiler: ${CMAKE_CXX_COMPILER}")
 message(STATUS "  Max Diagnostics: ${MAX_DIAGNOSTICS}")
 message(STATUS "  Build Examples: ${BUILD_EXAMPLES}")
+if(BUILD_EXAMPLES)
+    message(STATUS "  Build Solution AGATA: ${BUILD_SOLUTION_AGATA}")
+    message(STATUS "  Build Solution ILL: ${BUILD_SOLUTION_ILL}")
+    message(STATUS "  Build Solution PRISMA: ${BUILD_SOLUTION_PRISMA}")
+    message(STATUS "  Build Solution OSCAR: ${BUILD_SOLUTION_OSCAR}")
+    message(STATUS "  Build Solution Simple Example: ${BUILD_SOLUTION_SIMPLE_EXAMPLE}")
+endif()
 message(STATUS "  AddressSanitizer: ${ENABLE_ASAN}")
 
 find_package(Threads REQUIRED)

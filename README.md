@@ -5,20 +5,47 @@ Any mistakes in the codes are purely mine, please report them to <matus.balogh@c
 Basic description of the algorithm is given [in the NIM A paper](https://www.sciencedirect.com/science/article/pii/S0168900221003521), but the code here provides a few additional features, such as spline-based corrections. Advantage of the CCM algorithm is that it can be applied for time-varying spectra (such as beta-decays, isomeric decays etc.) and the region used to evaluate energy shifts does not need to be a peak but rather an arbitrary spectral feature unique it shape in it's vicinity. 
 
 # Build
-Prerequisities: ROOT (see https://root.cern.ch/building-root), tested with ROOT6.26/15
+Prerequisites:
+- CMake 3.10 or newer.
+- A C++17-capable compiler such as GCC, Clang, or AppleClang.
+- Git, including submodule support.
+- ROOT 6 with the `RIO`, `Tree`, `Graf`, and `MathMore` components available (see https://root.cern.ch/building-root). The code was originally tested with ROOT 6.26/15. `MathMore` is needed by CCM's ROOT interpolators; the bundled Theuerkauf fitter itself does not require it.
+- pthreads / CMake `Threads`, normally provided by the system toolchain.
+
+On macOS, ROOT installed through Homebrew or built from source should work as long as `root-config` is visible to CMake, for example by sourcing ROOT's setup script or by setting `CMAKE_PREFIX_PATH`.
 
 ```bash
 git clone https://github.com/matLogh/CCM.git
 cd CCM
-mkdir build
-cd build
-cmake ../
-make -j4
+cmake -S . -B build
+cmake --build build -j4
 ```
 
-Executables ```simple_example``` and ```optimizer``` will be created that are using the data set from the ```data/``` directory. Source code ```simple_example.cpp``` showcases the most basic usage of the code. The ```optimizer.cpp``` demonstrate an automated brute-force approach to find the ideal parameters of the CCM in order to obtain the best result - in this case defined as a lowest FWHM for given peak. 
+By default CMake also builds the applications in the ```solutions/``` directory tailored for specific use cases/environments used by different setups. Source code ```simple_example.cpp``` showcases the most basic usage of the code.
+The whole solutions tree can be disabled with ```-DBUILD_EXAMPLES=OFF```, or individual solution groups can be disabled with:
+```bash
+cmake -S . -B build \
+  -DBUILD_SOLUTION_AGATA=OFF \
+  -DBUILD_SOLUTION_ILL=OFF \
+  -DBUILD_SOLUTION_PRISMA=OFF \
+  -DBUILD_SOLUTION_OSCAR=OFF \
+  -DBUILD_SOLUTION_SIMPLE_EXAMPLE=OFF
+```
 
 Project is using *theuerkauf_fitter* submodule, that is automatically cloned when calling ```cmake```.
+
+***
+
+# Pre-made solutions
+
+The ```solutions/``` directory contains pre-made driver programs for specific workflows and data organizations, such as AGATA, ILL, PRISMA, OSCAR, and a minimal ```simple_example```. These are meant as ready-to-run applications built on top of the CCM library, while the core reusable code lives in ```src/```.
+
+By default all solution groups are configured when ```BUILD_EXAMPLES=ON```. If you only need the library, disable all of them with:
+```bash
+cmake -S . -B build -DBUILD_EXAMPLES=OFF
+```
+
+Individual groups can also be disabled with the ```BUILD_SOLUTION_*``` options listed in the [Build](#build) section.
 
 # How to use the code
 ## Basics
