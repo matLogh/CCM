@@ -6,20 +6,22 @@ list of throw exceptions:
 3 = vectors in dot product are not the same size
 */
 #include <algorithm> // copy
+#include <cassert>
 #include <atomic>
-#include <bits/stdc++.h>
+#include <cmath>
+#include <cstring>
 #include <fstream> //open file
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <stdexcept> // std::out_of_range
-#include <stdio.h>   //strcat
 #include <string>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #pragma GCC diagnostic push
