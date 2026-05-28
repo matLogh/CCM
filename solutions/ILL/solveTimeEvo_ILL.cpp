@@ -1,3 +1,4 @@
+#include <algorithm>
 // #include <array>
 #include <chrono> //measure time
 #include <cmath>
@@ -5,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -60,7 +62,7 @@ const std::vector<uint> gRebinY{1};
 const std::vector<double> gSmooth_param_others{1, 2, 5};
 
 // Global variables for input parameters
-std::vector<float> gROIarr;
+std::vector<std::vector<float>> gROIarrs;
 std::vector<float> gREFERENCE_TIME;
 std::vector<float> gFIT_PEAK;
 bool               gUSE_SUPER_SETTINGS{false};
@@ -90,6 +92,31 @@ std::string get_output_conffilename() { return (get_ill_output_base().string() +
 std::string get_output_diagnostic_filename() { return (get_ill_output_base().string() + "_correctedTimeEvo.root"); }
 
 std::string get_output_minimization_filename() { return (get_ill_output_base().string() + "_CCMconf.txt"); }
+
+std::vector<RegionOfInterest> make_rois(const std::shared_ptr<TH2> &matrix)
+{
+    std::vector<RegionOfInterest> ROIs;
+    ROIs.reserve(gROIarrs.size());
+    for (const auto &roi : gROIarrs)
+    {
+        ROIs.emplace_back(RegionOfInterest(matrix, roi.at(1), roi.at(2), roi.at(3), roi.at(4), roi.at(0)));
+    }
+    return ROIs;
+}
+
+std::pair<double, double> get_diagnostic_energy_range()
+{
+    if (gROIarrs.empty()) { throw std::runtime_error("No ROI configured"); }
+
+    double low  = gROIarrs.front().at(1) + gROIarrs.front().at(3);
+    double high = gROIarrs.front().at(2) + gROIarrs.front().at(4);
+    for (const auto &roi : gROIarrs)
+    {
+        low  = std::min(low, static_cast<double>(roi.at(1) + roi.at(3)));
+        high = std::max(high, static_cast<double>(roi.at(2) + roi.at(4)));
+    }
+    return {low, high};
+}
 
 void adjust_peak_energy(std::shared_ptr<TH2> TEMAT, std::vector<float> &peak_array)
 
@@ -143,8 +170,8 @@ void write_timeevo_conf_format(std::shared_ptr<CCM> corrections, std::string fna
         const auto fit  = corrections->GetCorrectionFit(run);
         const auto gain = fit.coef.size() == 1 ? fit.coef.front() : 0.0;
 
-        file << std::fixed << std::setprecision(0) << std::setw(16) << static_cast<Long64_t>(std::llround(run)) << std::fixed
-             << std::setprecision(10) << std::setw(22) << gain << "\n";
+        file << std::fixed << std::setprecision(0) << std::setw(16) << static_cast<Long64_t>(std::llround(run)) << std::fixed << std::setprecision(10)
+             << std::setw(22) << gain << "\n";
     }
 
     file.close();
@@ -211,8 +238,7 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
     if (!mr) { throw std::runtime_error("Error: Rebinning TEMAT failed!"); }
     std::shared_ptr<TH2> rTEMAT = std::shared_ptr<TH2>(mr);
 
-    std::vector<RegionOfInterest> ROIs;
-    ROIs.emplace_back(RegionOfInterest(rTEMAT, gROIarr.at(1), gROIarr.at(2), gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
+    auto ROIs = make_rois(rTEMAT);
 
     std::shared_ptr<CCM> ccm_fix = nullptr;
 
@@ -222,6 +248,10 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
         // outside of this matrix range
         float stupid_ref_start = static_cast<float>(rTEMAT->GetXaxis()->GetBinLowEdge(1));
         float stupid_ref_end   = static_cast<float>(rTEMAT->GetXaxis()->GetBinUpEdge(rTEMAT->GetXaxis()->GetNbins()));
+        if (ROIs.size() != 1)
+        {
+            throw std::runtime_error("Manual reference vectors are only supported with one ROI in solveTimeEvo_ILL");
+        }
         ccm_fix                = std::make_shared<CCM>(rTEMAT, ROIs, stupid_ref_start, stupid_ref_end);
         ccm_fix->SetReferenceVector(0, gREFERENCE_VECTOR);
     }
@@ -232,7 +262,7 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
 
     // CCM ccm_fix(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
 
-    std::string addressStr = "gain_fcn_" + get_pointer_string(&ccm_fix);
+    std::string addressStr = "gain_fcn_" + get_pointer_string(ccm_fix.get());
     TF1         fcn(addressStr.c_str(), "[0]*x", 0, 32000);
 
     ccm_fix->SetCorrectionFunction(fcn, "");
@@ -273,17 +303,21 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
 
             std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
             TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
-            auto        shifts    = ccm_fix->GetROIShifts(0);
-            auto        profile   = ccm_fix->GetInterpolationGraph(0, static_cast<int>(settings.temat_rebin_x), true);
+            const auto [roi_range_low, roi_range_high] = get_diagnostic_energy_range();
 
-            TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3), gROIarr.at(2) + gROIarr.at(4));
-            TEMAT->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3), gROIarr.at(2) + gROIarr.at(4));
+            TEMAT_fixed->GetYaxis()->SetRangeUser(roi_range_low, roi_range_high);
+            TEMAT->GetYaxis()->SetRangeUser(roi_range_low, roi_range_high);
 
             TEMAT->Write();
             proj->Write();
             TEMAT_fixed->Write();
-            shifts->Write();
-            profile->Write();
+            for (size_t roi_index = 0; roi_index < ccm_fix->GetNumberOfROIs(); ++roi_index)
+            {
+                auto shifts  = ccm_fix->GetROIShifts(roi_index);
+                auto profile = ccm_fix->GetInterpolationGraph(roi_index, static_cast<int>(settings.temat_rebin_x), true);
+                shifts->Write();
+                profile->Write();
+            }
         }
     }
 }
@@ -437,8 +471,7 @@ std::vector<ccm_settings> ccm_optimizer_global(const std::shared_ptr<TH2> TEMAT,
 
             if (rTEMAT.get() == nullptr) { throw std::runtime_error("Error: Rebinning TEMAT failed!"); }
 
-            std::vector<RegionOfInterest> ROIs;
-            ROIs.emplace_back(RegionOfInterest(rTEMAT, gROIarr.at(1), gROIarr.at(2), gROIarr.at(3), gROIarr.at(4), gROIarr.at(0)));
+            auto ROIs = make_rois(rTEMAT);
 
             std::shared_ptr<CCM> ccm_fix = std::make_shared<CCM>(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
 
@@ -462,8 +495,8 @@ void print_help()
     std::cout << "  --start_run <1>            START run number; used in RunVsEnergy_START_END\n";
     std::cout << "  --end_run <1>              END run number; used in RunVsEnergy_START_END\n";
     std::cout << "  --detector <1>             Detector number; reads RunVsEnergy_detNUMBER\n";
-    std::cout << "  --ROI <1> <2> <3> <4> <5>  Specify the Region of "
-                 "Interest (ROI) as:\n"
+    std::cout << "  --ROI <1> <2> <3> <4> <5>  Specify a Region of "
+                 "Interest (ROI). Can be used multiple times:\n"
               << "                                <1> - desired energy of "
                  "the ROI\n"
               << "                                <2> - left edge of ROI n\n"
@@ -475,7 +508,7 @@ void print_help()
                  "maximum of <5> to "
                  "the RIGHT\n";
 
-    std::cout << "  --ROIsource <1>            Define ROI for calibration sources. "
+    std::cout << "  --ROIsource <1>            Add ROI for calibration sources. "
                  "Currently "
                  "recognized are: 60Co, 66Ga, 133Ba, 226Ra \n";
     std::cout << "  --ref_time <1> <2>         Specify the reference time "
@@ -576,10 +609,12 @@ void parse_args(int argc, char **argv)
         }
         else if (arg == "--ROIsource")
         {
+            std::vector<float> roi;
             std::vector<float> peak;
             if (i + 1 < argc)
             {
-                parse_ROI_source(argv[++i], gROIarr, peak);
+                parse_ROI_source(argv[++i], roi, peak);
+                gROIarrs.emplace_back(std::move(roi));
                 if (gFIT_PEAK.empty()) { gFIT_PEAK = peak; }
                 else
                 {
@@ -594,7 +629,7 @@ void parse_args(int argc, char **argv)
         }
         else if (arg == "--ROI")
         {
-            gROIarr = parse_space_separated_floats(i, argc, argv, 5); // Expecting 5 floats
+            gROIarrs.emplace_back(parse_space_separated_floats(i, argc, argv, 5)); // Expecting 5 floats
         }
         else if (arg == "--ref_time")
         {
@@ -631,10 +666,18 @@ void parse_args(int argc, char **argv)
         print_help();
         throw std::runtime_error("--detector is required");
     }
-    if (gROIarr.size() != 5)
+    if (gROIarrs.empty())
     {
         print_help();
-        throw std::runtime_error("--ROI must have exactly 5 float values, but it has " + std::to_string(gROIarr.size()));
+        throw std::runtime_error("At least one --ROI or --ROIsource must be defined");
+    }
+    for (const auto &roi : gROIarrs)
+    {
+        if (roi.size() != 5)
+        {
+            print_help();
+            throw std::runtime_error("--ROI must have exactly 5 float values, but one ROI has " + std::to_string(roi.size()));
+        }
     }
     if (gREFERENCE_TIME.size() != 2)
     {
@@ -660,9 +703,13 @@ void parse_args(int argc, char **argv)
     std::cout << "  End Run: " << gEND_RUN << std::endl;
     std::cout << "  Detector: " << gDETECTOR << std::endl;
     std::cout << "  Matrix Name: " << gMATRIX_NAME << std::endl;
-    std::cout << "  ROI: ";
-    for (const auto &val : gROIarr) { std::cout << val << " "; }
-    std::cout << std::endl;
+    std::cout << "  ROIs: " << gROIarrs.size() << std::endl;
+    for (size_t roi_index = 0; roi_index < gROIarrs.size(); ++roi_index)
+    {
+        std::cout << "    ROI " << roi_index << ": ";
+        for (const auto &val : gROIarrs.at(roi_index)) { std::cout << val << " "; }
+        std::cout << std::endl;
+    }
     std::cout << "  Reference Time: ";
     for (const auto &val : gREFERENCE_TIME) { std::cout << val << " "; }
     std::cout << std::endl;
@@ -690,8 +737,11 @@ int main(int argc, char **argv)
     std::shared_ptr<TH2> TEMAT_original((TH2 *)matfile->Get(matrix_path.c_str()));
     if (!TEMAT_original) { throw std::runtime_error("Error! could not open/find the " + matrix_path + " matrix"); }
 
-    adjust_peak_energy(TEMAT_original, gROIarr);
-    std::cout << "Adjusted ROI energy to: " << gROIarr.at(0) << std::endl;
+    for (size_t roi_index = 0; roi_index < gROIarrs.size(); ++roi_index)
+    {
+        adjust_peak_energy(TEMAT_original, gROIarrs.at(roi_index));
+        std::cout << "Adjusted ROI " << roi_index << " energy to: " << gROIarrs.at(roi_index).at(0) << std::endl;
+    }
     if (gFIT_PEAK.size() == 3)
     {
         adjust_peak_energy(TEMAT_original, gFIT_PEAK);

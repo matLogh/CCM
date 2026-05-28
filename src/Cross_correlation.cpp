@@ -256,18 +256,14 @@ void TEC::CrossCorrel::GetShift_Gaussian(double &rchi2, double &sigma, double &m
         if (_dp_vec[i - 1] - mean_dp < 0) { break; }
     }
 
-    // return values of result:
-    // param     0 - reduced chi2
-    // param     1 - sigma
-    // param     2 - mu
-    double *result = new double[3];
     // check if the fitting range is bigger that 5 bins, if its 5 bins or less return -1
     // as sigma
     if (right_bin - left_bin <= 5)
     {
-        result[0] = -1;
-        result[1] = -1;
-        result[2] = -1;
+        rchi2 = -1;
+        sigma = -1;
+        mu    = static_cast<double>(center_bin) - 1.0;
+        return;
     }
 
     // get axis values for given bins
@@ -287,7 +283,7 @@ void TEC::CrossCorrel::GetShift_Gaussian(double &rchi2, double &sigma, double &m
     fcn.SetParameter(0, 0.2);
     fcn.SetParLimits(1, low, high);
     fcn.SetParameter(1, middle);
-    fcn.SetParLimits(2, 0., 1.E6);
+    fcn.SetParLimits(2, 1.E-6, 1.E6);
     fcn.SetParameter(2, 10.);
     fcn.SetParLimits(3, 0., 1.);
     fcn.SetParameter(3, mean_dp);
