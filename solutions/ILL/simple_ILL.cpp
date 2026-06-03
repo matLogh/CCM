@@ -1,6 +1,6 @@
-#include <chrono> //measure time
 #include <algorithm>
 #include <array>
+#include <chrono> //measure time
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -17,6 +17,8 @@
 #include "TChain.h"
 #include "TDirectory.h"
 #include "TFile.h"
+#include "TFitResult.h"
+#include "TFitResultPtr.h"
 #include "TGraph.h"
 #include "TH1D.h"
 #include "TH2D.h"
@@ -50,86 +52,10 @@ std::shared_ptr<TH2> get_matrix()
     return mat;
 }
 
-std::unique_ptr<TH2D> make_shift_profile_heatmap(CCM &fix)
-{
-    std::unique_ptr<TGraph> first_profile;
-    const int               n_time_bins = static_cast<int>(fix.GetNumberOfTimeIndices());
-    for (int xbin = 1; xbin <= n_time_bins; ++xbin)
-    {
-        first_profile = fix.GetShiftProfile(xbin - 1);
-        if (first_profile->GetN() > 0) { break; }
-    }
-
-    const int n_points = first_profile ? first_profile->GetN() : 0;
-    if (n_points == 0) { throw std::runtime_error("Cannot build shift-profile heatmap from empty shift profiles"); }
-
-    std::vector<std::pair<double, double>> profile_points;
-    profile_points.reserve(static_cast<size_t>(n_points));
-    for (int point = 0; point < n_points; ++point)
-    {
-        double energy;
-        double shift;
-        first_profile->GetPoint(point, energy, shift);
-        profile_points.emplace_back(energy, shift);
-    }
-    std::sort(profile_points.begin(), profile_points.end(), [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
-
-    std::vector<double> energies(static_cast<size_t>(n_points));
-    for (int point = 0; point < n_points; ++point) { energies.at(static_cast<size_t>(point)) = profile_points.at(static_cast<size_t>(point)).first; }
-
-    std::vector<double> energy_edges(static_cast<size_t>(n_points) + 1);
-    if (n_points == 1)
-    {
-        energy_edges.at(0) = energies.front() - 0.5;
-        energy_edges.at(1) = energies.front() + 0.5;
-    }
-    else
-    {
-        energy_edges.front() = energies.front() - 0.5 * (energies.at(1) - energies.front());
-        for (int point = 1; point < n_points; ++point)
-        {
-            energy_edges.at(static_cast<size_t>(point)) = 0.5 * (energies.at(static_cast<size_t>(point - 1)) + energies.at(static_cast<size_t>(point)));
-        }
-        energy_edges.back() = energies.back() + 0.5 * (energies.back() - energies.at(static_cast<size_t>(n_points - 2)));
-    }
-
-    auto heatmap = std::make_unique<TH2D>("shift_profile_heatmap",
-                                               "Shift profiles;ROI energy;TEMAT X bin;bin shift",
-                                               n_points,
-                                               energy_edges.data(),
-                                               n_time_bins,
-                                               0.5,
-                                               static_cast<double>(n_time_bins) + 0.5);
-    heatmap->SetDirectory(nullptr);
-
-    for (int xbin = 1; xbin <= n_time_bins; ++xbin)
-    {
-        auto profile = fix.GetShiftProfile(xbin - 1);
-        for (int point = 0; point < profile->GetN(); ++point)
-        {
-            double energy;
-            double shift;
-            profile->GetPoint(point, energy, shift);
-            heatmap->SetBinContent(heatmap->GetXaxis()->FindBin(energy), xbin, shift);
-        }
-    }
-
-    return heatmap;
-}
-
 void save_shift_profile_views(CCM &fix, const std::string &filename = "simpleILL_shiftProfiles.root")
 {
     TFile output(filename.c_str(), "RECREATE");
     if (!output.IsOpen()) { throw std::runtime_error("Cannot create " + filename); }
-
-    auto heatmap = make_shift_profile_heatmap(fix);
-    heatmap->Write();
-
-    TCanvas heatmap_canvas("c_shift_profile_heatmap_lego", "Shift profile heatmap - lego", 1000, 700);
-    heatmap_canvas.SetTheta(35);
-    heatmap_canvas.SetPhi(35);
-    heatmap->Draw("LEGO2Z");
-    heatmap_canvas.Write();
 
     TDirectory *profile_dir = output.mkdir("shift_profiles");
     if (!profile_dir) { throw std::runtime_error("Cannot create shift_profiles directory in " + filename); }
@@ -158,9 +84,7 @@ void save_shift_profile_animation(CCM &fix, const std::string &filename = "simpl
     for (int xbin = 1; xbin <= n_time_bins; ++xbin)
     {
         auto profile = fix.GetShiftProfile(xbin - 1);
-        profile->SetTitle(Form("Shift profile for TEMAT X bin %d, x = %.0f;ROI energy;bin shift",
-                               xbin,
-                               matrix->GetXaxis()->GetBinCenter(xbin)));
+        profile->SetTitle(Form("Shift profile for TEMAT X bin %d, x = %.0f;ROI energy;bin shift", xbin, matrix->GetXaxis()->GetBinCenter(xbin)));
         profile->SetMarkerColor(kBlue);
         profile->SetMarkerStyle(20);
         profile->SetMarkerSize(1.0);
@@ -196,14 +120,15 @@ int main(int argc, char **argv)
     }
 
     gROIarrs.emplace_back(TEMAT, 19300, 19800, -400, 400, 19600);
+    gROIarrs.emplace_back(TEMAT, 3800, 3900, -150, 150, 3845);
     gROIarrs.emplace_back(TEMAT, 16800, 17000, -300, 300, 16900);
     gROIarrs.emplace_back(TEMAT, 10250, 10450, -200, 200, 10350);
     gROIarrs.emplace_back(TEMAT, 6650, 6750, -100, 100, 6708);
-    gROIarrs.emplace_back(TEMAT, 3800, 3900, -100, 100, 3845);
     gROIarrs.emplace_back(TEMAT, 1750, 1850, -100, 100, 1800);
 
     std::cout << "Constructing CCM object...                           " << std::flush;
-    TF1 fcn("gain_fcn", "[0]*x", 0, 32000);
+    TF1 fcn("lin_fcn", "[0] + [1]*x", 0, 32000);
+    // TF1 fcn("gain_fcn", "[0]*x", 0, 32000);
     // create CCM object
     CCM fix(TEMAT, gROIarrs, reference_time_bgn, reference_time_end);
     fix.SetCorrectionFunction(fcn, "");
@@ -231,12 +156,67 @@ int main(int argc, char **argv)
         t1 = high_resolution_clock::now();
     }
 
+    std::shared_ptr<TH1F> profile_rchi2  = std::make_shared<TH1F>("shift_profile_rchi2", "rchi2 of shift profiles", 10000, 0, 100);
+    std::shared_ptr<TH1F> profile_maxres = std::make_shared<TH1F>("shift_profile_maxres", "max residual of shift profiles", 10000, 0, 100);
+
+    // evaluate "linarity" of the ROI shifts
+    std::vector<size_t> non_linear_profiles;
+    const float         max_residual_threshold = 3.f;
+    {
+        std::cout << "Evaluating linearity of shifts...                   " << std::flush;
+        const size_t n_time_bins = fix.GetNumberOfTimeIndices();
+        const size_t n_rois      = fix.GetNumberOfROIs();
+        for (size_t t_index = 0; t_index < n_time_bins; t_index++)
+        {
+            auto          profile = fix.GetShiftProfile(t_index);
+            TFitResultPtr fit     = profile->Fit(&fcn, "Q0S");
+            float         rchi2   = fit->Chi2() / fit->Ndf();
+            profile_rchi2->Fill(rchi2);
+            float max_res = 0;
+            for (int i = 1; i <= profile->GetN(); i++)
+            {
+                float res = std::abs(profile->GetY()[i - 1] - fcn.Eval(profile->GetX()[i - 1]));
+                if (res > max_res) { max_res = res; }
+            }
+            profile_maxres->Fill(max_res);
+            if (max_res > max_residual_threshold) { non_linear_profiles.push_back(t_index); }
+        }
+        auto duration = duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
+        std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6 << " seconds" << std::endl;
+    }
+
+    // remove extra ROIs
+    {
+        const std::vector<int> good_roi_indices = {0, 1}; // index of ROI that is expected to be linear and will be used for correction
+        const size_t           n_time_bins      = fix.GetNumberOfTimeIndices();
+        const size_t           n_rois           = fix.GetNumberOfROIs();
+        for (size_t t_index = 0; t_index < n_time_bins; t_index++)
+        {
+            for (size_t roi_index = 0; roi_index < n_rois; roi_index++)
+            {
+                if (std::find(good_roi_indices.begin(), good_roi_indices.end(), roi_index) == good_roi_indices.end())
+                {
+                    fix.SetResultStatus(roi_index, t_index, false);
+                }
+            }
+            if (std::find(non_linear_profiles.begin(), non_linear_profiles.end(), t_index) != non_linear_profiles.end())
+            {
+                for (int good_roi_index : good_roi_indices) { fix.SetResultStatus(good_roi_index, t_index, false); }
+            }
+        }
+    }
+
     {
         std::cout << "Calculating correction fits...                       " << std::flush;
         fix.CalculateCorrectionFits();
         auto duration = duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
         std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6 << " seconds" << std::endl;
         t1 = high_resolution_clock::now();
+    }
+
+    // remove non linear profiles - give them -1 correction gain
+    {
+        fix.RemoveInvalidProjections();
     }
 
     std::shared_ptr<TH2> TEMAT_fixed;
@@ -254,7 +234,7 @@ int main(int argc, char **argv)
         fix.SaveShiftTable("simpleILL_shiftTable.txt");
         fix.SaveFitTable("simpleILL_fitTable.txt");
         save_shift_profile_views(fix);
-        save_shift_profile_animation(fix);
+        // save_shift_profile_animation(fix);
         auto duration = duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
         std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6 << " seconds" << std::endl;
         t1 = high_resolution_clock::now();
@@ -333,12 +313,15 @@ int main(int argc, char **argv)
     shift_profile->SetMarkerSize(0.5);
     shift_profile->Draw("ALP");
 
-    TCanvas c7("c_shift_profile_heatmap", "Shift profile heatmap - simple_example", 1000, 700);
+    TCanvas c7("c_shift_profile_rchi2", "Rchi2 of shift profiles - simple_example", 800, 600);
     c7.SetCrosshair(1);
-    c7.SetTheta(35);
-    c7.SetPhi(35);
-    auto shift_profile_heatmap = make_shift_profile_heatmap(fix);
-    shift_profile_heatmap->Draw("LEGO2Z");
+    profile_rchi2->SetLineColor(kRed);
+    profile_rchi2->Draw("hist");
+
+    TCanvas c8("c_shift_profile_max_res", "Max residual of shift profiles - simple_example", 800, 600);
+    c8.SetCrosshair(1);
+    profile_maxres->SetLineColor(kRed);
+    profile_maxres->Draw("hist");
 
     {
         auto duration = duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
