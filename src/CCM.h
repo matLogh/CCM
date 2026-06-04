@@ -26,8 +26,7 @@
 namespace TEC
 {
 static const int                             MINIMUM_SMOOTHING_POINTS{3};
-static const ROOT::Math::Interpolation::Type DEFAULT_INTERPOLATOR{
-    ROOT::Math::Interpolation::Type::kAKIMA};
+static const ROOT::Math::Interpolation::Type DEFAULT_INTERPOLATOR{ROOT::Math::Interpolation::Type::kAKIMA};
 
 enum SmootherType
 {
@@ -47,10 +46,7 @@ class CCM
     /// energy.
     /// @param _ROIs Vector of regions of interest, that defines regions used for
     /// correction (e.i. like peaks when one does energy calibration)
-    CCM(std::shared_ptr<TH2>                matrix,
-        const std::vector<RegionOfInterest> _ROIs,
-        const double                        reference_time_low,
-        const double                        reference_time_high);
+    CCM(std::shared_ptr<TH2> matrix, const std::vector<RegionOfInterest> _ROIs, const double reference_time_low, const double reference_time_high);
 
     /// @brief Constructor for CCM class with input parameters for all ROIs (regions of
     /// interest), that are used for corrections. If you use this constructor, you HAVE TO
@@ -76,7 +72,7 @@ class CCM
     /// @param fcn Function needs to be defined using TFormula!
     /// @param fit_options Fit options, see
     /// https://root.cern.ch/doc/master/classTGraph.html#aa978c8ee0162e661eae795f6f3a35589
-    void SetCorrectionFunction(const TF1 &fcn, const std::string &fit_options);
+    void SetCorrectionFunction(const TF1 &fcn, const std::string &fit_options = "");
 
     /// @brief Save table containing shifts for each ROI for each time slice of time.
     void SaveShiftTable(const std::string &table_filename = "ccm_shift_table.dat");
@@ -120,12 +116,10 @@ class CCM
                  const bool         valid_only       = true,
                  const int          time_subdivision = 1);
 
-    void SaveFitTable(const std::string &data_filename = "fit_table.dat",
-                      const std::string &detector_name = "noname");
+    void SaveFitTable(const std::string &data_filename = "fit_table.dat", const std::string &detector_name = "noname");
     void SaveToRootFile(const std::string &outroot_file = "ccm_output.root");
 
-    const ResCont *GetResultContainer(const size_t ROI_no,
-                                      const size_t time_index) const noexcept;
+    const ResCont *GetResultContainer(const size_t ROI_no, const size_t time_index) const noexcept;
 
     size_t GetNumberOfTimeIndices() const noexcept { return fXbins; };
 
@@ -199,39 +193,30 @@ class CCM
     /// have an option to set it by hand for given ROI
     /// @param ROI_index
     /// @param own_reference_vector
-    void SetReferenceVector(const unsigned int        ROI_index,
-                            const std::vector<float> &own_reference_vector);
+    void SetReferenceVector(const unsigned int ROI_index, const std::vector<float> &own_reference_vector);
 
     /// @brief Reference vector is calculated automatically from the matrix. You can
     /// "export" it using this function and use it in other CCM objects.
-    std::vector<float> GetReferenceVector(const size_t ROI_index) const noexcept
-    {
-        return V.sample_vector[ROI_index];
-    }
+    std::vector<float> GetReferenceVector(const size_t ROI_index) const noexcept { return V.sample_vector[ROI_index]; }
 
-    std::unique_ptr<TGraph> GetDotProductGraph(const size_t roi_index,
-                                               const size_t    time_bin);
+    std::unique_ptr<TGraph> GetDotProductGraph(const size_t roi_index, const size_t time_bin);
 
     /// @brief Get all the shifts for selected ROI as a function of time. This is useful
     /// if you want to modify calculated shifts using smoothing functions or set own
     /// interpolation. If valid_only is set to true, only valid ROIs are shown
     /// @param roi_index ROI number to be shown
     /// @param valid_only user is owner of the returned TGraph
-    std::unique_ptr<TGraph> GetROIShifts(const size_t roi_index,
-                                         const bool   valid_only = true);
+    std::unique_ptr<TGraph> GetROIShifts(const size_t roi_index, const bool valid_only = true);
 
     /// @brief Get shifts for all ROIs at given time. Useful for determination of ideal
     /// correction/calibration function.
     /// @param time_bin
     /// @return user is owner of the returned TGraph
-    std::unique_ptr<TGraph> GetShiftProfile(const int  time_bin,
-                                            const bool valid_only = true);
+    std::unique_ptr<TGraph> GetShiftProfile(const int time_bin, const bool valid_only = true);
 
     /// @brief produces a TGraph of energy shifts for given ROI but using values from
     /// interpolator, not calculated shifts
-    std::unique_ptr<TGraph> GetInterpolationGraph(const size_t ROI_index,
-                                                  const int    subdivide  = 10,
-                                                  const bool   valid_only = true);
+    std::unique_ptr<TGraph> GetInterpolationGraph(const size_t ROI_index, const int subdivide = 10, const bool valid_only = true);
 
     /// @brief Configure interpolators used to interpolate shifts across the time for
     /// given ROI.
@@ -244,9 +229,7 @@ class CCM
     /// 5 points); 5) "AKIMA_PERIODIC", Akima spline with periodic boundaries ( requires a
     /// minimum of 5 points);
     /// @param valid_only if set to true, only valid ROIs are used for interpolation
-    void ConfigureShiftInterpolator(const size_t      ROI_index,
-                                    const std::string type,
-                                    const bool        valid_only = true);
+    void ConfigureShiftInterpolator(const size_t ROI_index, const std::string type, const bool valid_only = true);
 
     /// @brief Configure interpolators used to interpolate shifts across the time for
     /// given ROI.
@@ -259,9 +242,7 @@ class CCM
     /// 5 points); 5) "kAKIMA_PERIODIC", Akima spline with periodic boundaries ( requires
     /// a minimum of 5 points);
     /// @param valid_only if set to true, only valid ROIs are used for interpolation
-    void ConfigureShiftInterpolator(const size_t                          ROI_index,
-                                    const ROOT::Math::Interpolation::Type type,
-                                    const bool valid_only = true);
+    void ConfigureShiftInterpolator(const size_t ROI_index, const ROOT::Math::Interpolation::Type type, const bool valid_only = true);
 
     /// @brief Configure interpolators used to interpolate shifts across the time for
     /// all ROIs.
@@ -273,8 +254,7 @@ class CCM
     /// 5 points); 5) "AKIMA_PERIODIC", Akima spline with periodic boundaries ( requires a
     /// minimum of 5 points);
     /// @param valid_only if set to true, only valid ROIs are used for interpolation
-    void ConfigureShiftInterpolator(const std::string type       = "AKIMA",
-                                    const bool        valid_only = true);
+    void ConfigureShiftInterpolator(const std::string type = "AKIMA", const bool valid_only = true);
 
     /// @brief Configure interpolators used to interpolate shifts across the time for
     /// all ROIs.
@@ -286,8 +266,7 @@ class CCM
     /// 5 points); 5) "kAKIMA_PERIODIC", Akima spline with periodic boundaries ( requires
     /// a minimum of 5 points);
     /// @param valid_only if set to true, only valid ROIs are used for interpolation
-    void ConfigureShiftInterpolator(const ROOT::Math::Interpolation::Type type,
-                                    const bool valid_only = true);
+    void ConfigureShiftInterpolator(const ROOT::Math::Interpolation::Type type, const bool valid_only = true);
 
     /// @brief Uses shift of the closest calculated (time) point, shift interpolation
     /// disabled
@@ -322,9 +301,7 @@ class CCM
     /// higher than 50, but go ahead and try). For SUPER, it is bass parameter that
     /// controls the smoothness of the fitted curve. Values of up to 10 indicate
     /// increasing smoothness.
-    void SmoothShifts(const SmootherType smoother,
-                      const double       smoother_parameter,
-                      const size_t       ROI_index);
+    void SmoothShifts(const SmootherType smoother, const double smoother_parameter, const size_t ROI_index);
 
     /// @brief Smoothens the calculated shift values (for all ROIs) that are used to
     /// calculate the correction(/calibration) function. Exact shift values calculated
@@ -335,15 +312,17 @@ class CCM
     /// . For details please check ROOT documentation.
     void SmoothShifts(const SmootherType smoother, const double smoother_parameter);
 
-    std::map<double, FitCont> GetCorrectionFits() const noexcept
-    {
-        return fCorrectionFits;
-    };
+    std::map<double, FitCont> GetCorrectionFits() const noexcept { return fCorrectionFits; };
+
+    /// @brief If no correction function is found (e.g. due to too few valid ROIs), this function will use gain function with coefficient -1,
+    /// equivalent to removing the data from the matrix
+    void RemoveInvalidProjections();
 
     const FitCont GetCorrectionFit(const double time);
 
   public:
     static const std::string EMPTY_FUNCTION_NAME;
+    static const std::string REMOVE_FUNCTION_NAME;
 
   private:
     size_t fXbins;
@@ -371,9 +350,7 @@ class CCM
     void CheckReferenceVectors();
 
     void                           CopyMatrixContent();
-    void                           CreateReferenceVector(const uint   ROI_index,
-                                                         const double ROI_time_low,
-                                                         const double ROI_time_high);
+    void                           CreateReferenceVector(const uint ROI_index, const double ROI_time_low, const double ROI_time_high);
     void                           Normalize(std::vector<float> &v);
     std::pair<TF1 *, std::string> *FindCorrectionFunction(const int nrois);
 
@@ -381,10 +358,7 @@ class CCM
     /// @param time_slice_index time-slice index, function automatically adds +1 to
     /// compensate for root binning (bin 0 is underflow, bin 1 is first real bin)
     /// @return
-    double GetMatrixTime(const size_t time_slice_index)
-    {
-        return V.TEMAT->GetXaxis()->GetBinCenter((int)time_slice_index + 1);
-    };
+    double GetMatrixTime(const size_t time_slice_index) { return V.TEMAT->GetXaxis()->GetBinCenter((int)time_slice_index + 1); };
 
     void BuildInterpolator(const size_t ROI_index);
     void BuildInterpolators();

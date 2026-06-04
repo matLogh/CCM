@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 project(ccm VERSION 1.0.0 LANGUAGES CXX)
 
 # ============================================================================
@@ -9,6 +9,10 @@ project(ccm VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(APPLE)
+    set(CMAKE_MACOSX_RPATH ON)
+endif()
 
 # Set default build type if not specified
 if(NOT CMAKE_BUILD_TYPE)
@@ -24,9 +28,6 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "RelWithD
 
 # Max number of diagnostics shown by the compiler
 set(MAX_DIAGNOSTICS 3 CACHE STRING "Maximum number of compiler diagnostics to display")
-
-# Common flags for all build types
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++17")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_options(-fmax-errors=${MAX_DIAGNOSTICS})
@@ -58,6 +59,11 @@ endif()
 # ============================================================================
 
 option(BUILD_EXAMPLES "Build example applications" ON)
+option(BUILD_SOLUTION_AGATA "Build AGATA solution applications" ON)
+option(BUILD_SOLUTION_ILL "Build ILL solution applications" ON)
+option(BUILD_SOLUTION_PRISMA "Build PRISMA solution applications" ON)
+option(BUILD_SOLUTION_OSCAR "Build OSCAR solution applications" ON)
+option(BUILD_SOLUTION_SIMPLE_EXAMPLE "Build simple example solution application" ON)
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 
 # Helper function to apply strict warnings to CCM code
@@ -82,7 +88,8 @@ endfunction()
 # AddressSanitizer support
 if(ENABLE_ASAN)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
-    add_link_options(-fsanitize=address)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
     message(STATUS "AddressSanitizer enabled")
 endif()
 
@@ -96,8 +103,16 @@ message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  CXX Compiler: ${CMAKE_CXX_COMPILER}")
 message(STATUS "  Max Diagnostics: ${MAX_DIAGNOSTICS}")
 message(STATUS "  Build Examples: ${BUILD_EXAMPLES}")
+if(BUILD_EXAMPLES)
+    message(STATUS "  Build Solution AGATA: ${BUILD_SOLUTION_AGATA}")
+    message(STATUS "  Build Solution ILL: ${BUILD_SOLUTION_ILL}")
+    message(STATUS "  Build Solution PRISMA: ${BUILD_SOLUTION_PRISMA}")
+    message(STATUS "  Build Solution OSCAR: ${BUILD_SOLUTION_OSCAR}")
+    message(STATUS "  Build Solution Simple Example: ${BUILD_SOLUTION_SIMPLE_EXAMPLE}")
+endif()
 message(STATUS "  AddressSanitizer: ${ENABLE_ASAN}")
 
+find_package(Threads REQUIRED)
 find_package(ROOT REQUIRED COMPONENTS RIO Tree Graf MathMore)
 
 include(${ROOT_USE_FILE})
@@ -105,10 +120,23 @@ include(${ROOT_USE_FILE})
 include_directories(SYSTEM ${ROOT_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-set(CCM_FILESYSTEM_LIB "")
+set(CCM_PLATFORM_LIBS Threads::Threads)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
-    set(CCM_FILESYSTEM_LIB stdc++fs)
+    list(APPEND CCM_PLATFORM_LIBS stdc++fs)
 endif()
+
+function(ccm_configure_target TARGET)
+    target_compile_features(${TARGET} PUBLIC cxx_std_17)
+    target_link_libraries(${TARGET} ${CCM_PLATFORM_LIBS})
+    if(APPLE)
+        set_target_properties(${TARGET} PROPERTIES
+            MACOSX_RPATH ON
+            BUILD_RPATH "${ROOT_LIBRARY_DIR};${ROOT_LIBRARY_DIRS}"
+        )
+    endif()
+endfunction()
+
+
 
 add_definitions("-DDATA_PATH=\"${PROJECT_SOURCE_DIR}\"")
 
