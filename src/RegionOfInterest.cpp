@@ -1,5 +1,7 @@
 #include "RegionOfInterest.h"
 
+#include <cassert>
+
 TEC::RegionOfInterest::RegionOfInterest(const std::shared_ptr<TH2> matrix,
                                         const double               _energy_window_low,
                                         const double               _energy_window_high,
