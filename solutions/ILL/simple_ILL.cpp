@@ -38,16 +38,19 @@ using namespace TEC;
 #define DATA_PATH ""
 #endif
 
-const double reference_time_bgn = 247800;
-const double reference_time_end = 247804;
+//const double reference_time_bgn = 247800;
+//const double reference_time_end = 247804;
+
+const double reference_time_bgn = 243291;
+const double reference_time_end = 243295;
 
 // const std::array<double, 5>              ROIarr{2746., 2754., -90., 10., 2749.};
 std::vector<TEC::RegionOfInterest> gROIarrs;
 
 std::shared_ptr<TH2> get_matrix()
 {
-    TFile               *f = TFile::Open(std::string("~/data/frank.root").c_str());
-    std::shared_ptr<TH2> mat((TH2F *)f->Get("RunVsEnergy_247253_248623/RunVsEnergy_det7"));
+    TFile               *f = TFile::Open(std::string("RunVsEnergy_all.root").c_str());
+    std::shared_ptr<TH2> mat((TH2F *)f->Get("RunVsEnergy_242083_243791/RunVsEnergy_det7"));
 
     return mat;
 }
@@ -119,12 +122,12 @@ int main(int argc, char **argv)
         t1 = high_resolution_clock::now();
     }
 
-    gROIarrs.emplace_back(TEMAT, 19300, 19800, -400, 400, 19600);
-    gROIarrs.emplace_back(TEMAT, 3800, 3900, -150, 150, 3845);
-    gROIarrs.emplace_back(TEMAT, 16800, 17000, -300, 300, 16900);
-    gROIarrs.emplace_back(TEMAT, 10250, 10450, -200, 200, 10350);
-    gROIarrs.emplace_back(TEMAT, 6650, 6750, -100, 100, 6708);
-    gROIarrs.emplace_back(TEMAT, 1750, 1850, -100, 100, 1800);
+    gROIarrs.emplace_back(TEMAT, 19300, 19800, -400, 400, 19550);
+    gROIarrs.emplace_back(TEMAT, 3790, 3830, -150, 150, 3808);
+    //gROIarrs.emplace_back(TEMAT, 16800, 17000, -300, 300, 16900);
+    //gROIarrs.emplace_back(TEMAT, 10250, 10450, -200, 200, 10350);
+    //gROIarrs.emplace_back(TEMAT, 6650, 6750, -100, 100, 6708);
+    //gROIarrs.emplace_back(TEMAT, 1750, 1850, -100, 100, 1800);
 
     std::cout << "Constructing CCM object...                           " << std::flush;
     TF1 fcn("lin_fcn", "[0] + [1]*x", 0, 32000);
@@ -162,7 +165,7 @@ int main(int argc, char **argv)
     // evaluate "linarity" of the ROI shifts
     std::vector<size_t>    profiles_to_remove;
     const float            max_residual_threshold = 3.f;
-    const float            max_dp_threshold       = 0.6f;
+    const float            max_dp_threshold       = 0.7f;
     const std::vector<int> good_roi_indices       = {0, 1}; // index of ROI that is expected to be linear and will be used for correction
 
     {
@@ -189,7 +192,7 @@ int main(int argc, char **argv)
             for (auto roi_index : good_roi_indices)
             {
                 auto *res = fix.GetResultContainer(roi_index, t_index);
-                if (res->dp > max_dp_threshold) { is_valid = false; }
+                if (res->dp < max_dp_threshold) { is_valid = false; }
             }
             if (!is_valid) { profiles_to_remove.push_back(t_index); }
         }
