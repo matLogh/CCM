@@ -56,7 +56,7 @@ TEC::CCM::CCM(std::shared_ptr<TH2>                matrix,
     {
         this->CreateReferenceVector(ROI_index, reference_time_low, reference_time_high);
     }
-:}
+}
 
 TEC::CCM::CCM(std::shared_ptr<TH2> matrix, const std::vector<RegionOfInterest> _ROIs)
 {
