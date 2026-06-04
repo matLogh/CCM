@@ -38,16 +38,19 @@ using namespace TEC;
 #define DATA_PATH ""
 #endif
 
-const double reference_time_bgn = 247800;
-const double reference_time_end = 247804;
+//const double reference_time_bgn = 247800;
+//const double reference_time_end = 247804;
+
+const double reference_time_bgn = 243291;
+const double reference_time_end = 243295;
 
 // const std::array<double, 5>              ROIarr{2746., 2754., -90., 10., 2749.};
 std::vector<TEC::RegionOfInterest> gROIarrs;
 
 std::shared_ptr<TH2> get_matrix()
 {
-    TFile               *f = TFile::Open(std::string("~/data/frank.root").c_str());
-    std::shared_ptr<TH2> mat((TH2F *)f->Get("RunVsEnergy_247253_248623/RunVsEnergy_det7"));
+    TFile               *f = TFile::Open(std::string("RunVsEnergy_all.root").c_str());
+    std::shared_ptr<TH2> mat((TH2F *)f->Get("RunVsEnergy_242083_243791/RunVsEnergy_det7"));
 
     return mat;
 }
@@ -119,12 +122,12 @@ int main(int argc, char **argv)
         t1 = high_resolution_clock::now();
     }
 
-    gROIarrs.emplace_back(TEMAT, 19300, 19800, -400, 400, 19600);
-    gROIarrs.emplace_back(TEMAT, 3800, 3900, -150, 150, 3845);
-    gROIarrs.emplace_back(TEMAT, 16800, 17000, -300, 300, 16900);
-    gROIarrs.emplace_back(TEMAT, 10250, 10450, -200, 200, 10350);
-    gROIarrs.emplace_back(TEMAT, 6650, 6750, -100, 100, 6708);
-    gROIarrs.emplace_back(TEMAT, 1750, 1850, -100, 100, 1800);
+    gROIarrs.emplace_back(TEMAT, 19300, 19800, -400, 400, 19550);
+    gROIarrs.emplace_back(TEMAT, 3790, 3830, -150, 150, 3808);
+    //gROIarrs.emplace_back(TEMAT, 16800, 17000, -300, 300, 16900);
+    //gROIarrs.emplace_back(TEMAT, 10250, 10450, -200, 200, 10350);
+    //gROIarrs.emplace_back(TEMAT, 6650, 6750, -100, 100, 6708);
+    //gROIarrs.emplace_back(TEMAT, 1750, 1850, -100, 100, 1800);
 
     std::cout << "Constructing CCM object...                           " << std::flush;
     TF1 fcn("lin_fcn", "[0] + [1]*x", 0, 32000);
@@ -160,8 +163,11 @@ int main(int argc, char **argv)
     std::shared_ptr<TH1F> profile_maxres = std::make_shared<TH1F>("shift_profile_maxres", "max residual of shift profiles", 10000, 0, 100);
 
     // evaluate "linarity" of the ROI shifts
-    std::vector<size_t> non_linear_profiles;
-    const float         max_residual_threshold = 3.f;
+    std::vector<size_t>    profiles_to_remove;
+    const float            max_residual_threshold = 3.f;
+    const float            max_dp_threshold       = 0.7f;
+    const std::vector<int> good_roi_indices       = {0, 1}; // index of ROI that is expected to be linear and will be used for correction
+
     {
         std::cout << "Evaluating linearity of shifts...                   " << std::flush;
         const size_t n_time_bins = fix.GetNumberOfTimeIndices();
@@ -179,7 +185,16 @@ int main(int argc, char **argv)
                 if (res > max_res) { max_res = res; }
             }
             profile_maxres->Fill(max_res);
-            if (max_res > max_residual_threshold) { non_linear_profiles.push_back(t_index); }
+            if (max_res > max_residual_threshold) { profiles_to_remove.push_back(t_index); }
+
+            // check max dp and decide if the profile should be removed or not
+            bool is_valid = true;
+            for (auto roi_index : good_roi_indices)
+            {
+                auto *res = fix.GetResultContainer(roi_index, t_index);
+                if (res->dp < max_dp_threshold) { is_valid = false; }
+            }
+            if (!is_valid) { profiles_to_remove.push_back(t_index); }
         }
         auto duration = duration_cast<microseconds>(high_resolution_clock::now() - t1).count();
         std::cout << "done in " << std::setprecision(2) << (double)duration / 1e6 << " seconds" << std::endl;
@@ -187,9 +202,8 @@ int main(int argc, char **argv)
 
     // remove extra ROIs
     {
-        const std::vector<int> good_roi_indices = {0, 1}; // index of ROI that is expected to be linear and will be used for correction
-        const size_t           n_time_bins      = fix.GetNumberOfTimeIndices();
-        const size_t           n_rois           = fix.GetNumberOfROIs();
+        const size_t n_time_bins = fix.GetNumberOfTimeIndices();
+        const size_t n_rois      = fix.GetNumberOfROIs();
         for (size_t t_index = 0; t_index < n_time_bins; t_index++)
         {
             for (size_t roi_index = 0; roi_index < n_rois; roi_index++)
@@ -199,7 +213,7 @@ int main(int argc, char **argv)
                     fix.SetResultStatus(roi_index, t_index, false);
                 }
             }
-            if (std::find(non_linear_profiles.begin(), non_linear_profiles.end(), t_index) != non_linear_profiles.end())
+            if (std::find(profiles_to_remove.begin(), profiles_to_remove.end(), t_index) != profiles_to_remove.end())
             {
                 for (int good_roi_index : good_roi_indices) { fix.SetResultStatus(good_roi_index, t_index, false); }
             }

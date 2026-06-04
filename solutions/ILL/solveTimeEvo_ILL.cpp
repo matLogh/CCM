@@ -66,13 +66,15 @@ std::vector<std::vector<float>> gROIarrs;
 std::vector<float> gREFERENCE_TIME;
 std::vector<float> gFIT_PEAK;
 bool               gUSE_SUPER_SETTINGS{false};
+bool               gUSE_GAIN_WITH_OFFSET{false};
 std::string        gROOTFILE      = "";
 int                gSTART_RUN     = -1;
 int                gEND_RUN       = -1;
 int                gDETECTOR      = -1;
 std::string        gROOT_DIR_NAME = "";
 std::string        gMATRIX_NAME   = "";
-std::vector<float> gREFERENCE_VECTOR;
+std::vector<std::vector<float>> gREFERENCE_VECTORS;
+std::vector<std::pair<int, int>> gCHAIN_RUN_RANGES;
 
 std::string get_ill_directory_name() { return "RunVsEnergy_" + std::to_string(gSTART_RUN) + "_" + std::to_string(gEND_RUN); }
 
@@ -92,6 +94,24 @@ std::string get_output_conffilename() { return (get_ill_output_base().string() +
 std::string get_output_diagnostic_filename() { return (get_ill_output_base().string() + "_correctedTimeEvo.root"); }
 
 std::string get_output_minimization_filename() { return (get_ill_output_base().string() + "_CCMconf.txt"); }
+
+std::string get_correction_formula()
+{
+    return gUSE_GAIN_WITH_OFFSET ? "[0] + [1]*x" : "[0]*x";
+}
+
+std::shared_ptr<TH2> get_ill_matrix_from_file(TFile *matfile)
+{
+    if (!matfile || matfile->IsZombie()) { throw std::runtime_error("Error! could not open/find the " + gROOTFILE + " file"); }
+
+    gROOT_DIR_NAME              = get_ill_directory_name();
+    gMATRIX_NAME                = get_ill_matrix_name();
+    const std::string matrix_path = gROOT_DIR_NAME + "/" + gMATRIX_NAME;
+    std::shared_ptr<TH2> TEMAT((TH2 *)matfile->Get(matrix_path.c_str()));
+    if (!TEMAT) { throw std::runtime_error("Error! could not open/find the " + matrix_path + " matrix"); }
+
+    return TEMAT;
+}
 
 std::vector<RegionOfInterest> make_rois(const std::shared_ptr<TH2> &matrix)
 {
@@ -161,17 +181,33 @@ void write_timeevo_conf_format(std::shared_ptr<CCM> corrections, std::string fna
     double run;
 
     // Write the header
-    file << "#" << std::setw(15) << "run" << std::setw(22) << "gain" << "\n";
+    if (gUSE_GAIN_WITH_OFFSET)
+    {
+        file << "#" << std::setw(15) << "run" << std::setw(22) << "offset" << std::setw(22) << "gain" << "\n";
+    }
+    else
+    {
+        file << "#" << std::setw(15) << "run" << std::setw(22) << "gain" << "\n";
+    }
 
     for (int bin = 1; bin < matrix->GetXaxis()->GetNbins(); bin++)
     {
         run = matrix->GetXaxis()->GetBinCenter(bin);
 
-        const auto fit  = corrections->GetCorrectionFit(run);
-        const auto gain = fit.coef.size() == 1 ? fit.coef.front() : 0.0;
+        const auto fit = corrections->GetCorrectionFit(run);
 
-        file << std::fixed << std::setprecision(0) << std::setw(16) << static_cast<Long64_t>(std::llround(run)) << std::fixed << std::setprecision(10)
-             << std::setw(22) << gain << "\n";
+        file << std::fixed << std::setprecision(0) << std::setw(16) << static_cast<Long64_t>(std::llround(run));
+        if (gUSE_GAIN_WITH_OFFSET)
+        {
+            const auto offset = fit.coef.size() == 2 ? fit.coef.at(0) : 0.0;
+            const auto gain   = fit.coef.size() == 2 ? fit.coef.at(1) : (fit.coef.size() == 1 ? fit.coef.front() : 0.0);
+            file << std::fixed << std::setprecision(10) << std::setw(22) << offset << std::setw(22) << gain << "\n";
+        }
+        else
+        {
+            const auto gain = fit.coef.size() == 1 ? fit.coef.front() : 0.0;
+            file << std::fixed << std::setprecision(10) << std::setw(22) << gain << "\n";
+        }
     }
 
     file.close();
@@ -242,18 +278,21 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
 
     std::shared_ptr<CCM> ccm_fix = nullptr;
 
-    if (gREFERENCE_VECTOR.size() != 0)
+    if (!gREFERENCE_VECTORS.empty())
     {
         // we need to "invent" the reference time or it may throw error if the time is
         // outside of this matrix range
         float stupid_ref_start = static_cast<float>(rTEMAT->GetXaxis()->GetBinLowEdge(1));
         float stupid_ref_end   = static_cast<float>(rTEMAT->GetXaxis()->GetBinUpEdge(rTEMAT->GetXaxis()->GetNbins()));
-        if (ROIs.size() != 1)
+        if (ROIs.size() != gREFERENCE_VECTORS.size())
         {
-            throw std::runtime_error("Manual reference vectors are only supported with one ROI in solveTimeEvo_ILL");
+            throw std::runtime_error("Number of shared reference vectors does not match number of ROIs in solveTimeEvo_ILL");
         }
         ccm_fix                = std::make_shared<CCM>(rTEMAT, ROIs, stupid_ref_start, stupid_ref_end);
-        ccm_fix->SetReferenceVector(0, gREFERENCE_VECTOR);
+        for (size_t roi_index = 0; roi_index < gREFERENCE_VECTORS.size(); ++roi_index)
+        {
+            ccm_fix->SetReferenceVector(static_cast<unsigned int>(roi_index), gREFERENCE_VECTORS.at(roi_index));
+        }
     }
     else
     {
@@ -263,7 +302,7 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
     // CCM ccm_fix(rTEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
 
     std::string addressStr = "gain_fcn_" + get_pointer_string(ccm_fix.get());
-    TF1         fcn(addressStr.c_str(), "[0]*x", 0, 32000);
+    TF1         fcn(addressStr.c_str(), get_correction_formula().c_str(), 0, 32000);
 
     ccm_fix->SetCorrectionFunction(fcn, "");
     ccm_fix->CalculateEnergyShifts(8);
@@ -322,6 +361,46 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
     }
 }
 
+void set_reference_vector()
+{
+    TFile *matfile = TFile::Open(gROOTFILE.c_str(), "READ");
+    auto   TEMAT   = get_ill_matrix_from_file(matfile);
+    auto   ROIs    = make_rois(TEMAT);
+    CCM    ccm_fix(TEMAT, ROIs, gREFERENCE_TIME.at(0), gREFERENCE_TIME.at(1));
+    gREFERENCE_VECTORS.clear();
+    gREFERENCE_VECTORS.reserve(ROIs.size());
+    for (size_t roi_index = 0; roi_index < ROIs.size(); ++roi_index)
+    {
+        gREFERENCE_VECTORS.emplace_back(ccm_fix.GetReferenceVector(roi_index));
+    }
+}
+
+void run_chained_ranges(const ccm_settings &optimal_settings)
+{
+    if (gCHAIN_RUN_RANGES.empty()) { return; }
+
+    const int reference_start = gSTART_RUN;
+    const int reference_end   = gEND_RUN;
+    set_reference_vector();
+
+    for (const auto &[chain_start, chain_end] : gCHAIN_RUN_RANGES)
+    {
+        gSTART_RUN = chain_start;
+        gEND_RUN   = chain_end;
+
+        TFile *matfile = TFile::Open(gROOTFILE.c_str(), "READ");
+        auto   TEMAT   = get_ill_matrix_from_file(matfile);
+
+        const auto conf_filename = get_output_conffilename();
+        if (!can_create_file(conf_filename)) throw std::runtime_error("Problem with creating output configuration file\n");
+
+        std::cout << std::endl
+                  << "Running chained ILL range: " << gSTART_RUN << "-" << gEND_RUN
+                  << " using reference range " << reference_start << "-" << reference_end << std::endl;
+        run_ccm_super_settings(TEMAT, optimal_settings, conf_filename);
+    }
+}
+
 std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2>          original_TEMAT,
                                               std::shared_ptr<CCM>                ccm_fix,
                                               ccm_settings                        settings,
@@ -331,7 +410,7 @@ std::vector<ccm_settings> ccm_local_optimizer(const std::shared_ptr<TH2>        
     // get fcn unique name by setting it to the address of the CCM
     // ojbect
     std::string addressStr = "gain_fcn_" + get_pointer_string(ccm_fix.get());
-    TF1         fcn("gain_fcn", "[0]*x", 0, 32000);
+    TF1         fcn("gain_fcn", get_correction_formula().c_str(), 0, 32000);
 
     ccm_fix->SetCorrectionFunction(fcn, "");
     ccm_fix->CalculateEnergyShifts(1);
@@ -529,6 +608,11 @@ void print_help()
                  "than one contained in ROI, otherwise you are risking overfitting\n";
     std::cout << "  --super_settings           Run corrections with hardcoded "
                  "parameters \n";
+    std::cout << "  --gain_with_offset         Use [0] + [1]*x correction instead of [0]*x. "
+                 "Requires at least two ROIs.\n";
+    std::cout << "  --chain_ranges <s> <e> [...] Run additional ILL run ranges using the "
+                 "reference vector from --start_run/--end_run. Values must be "
+                 "start/end pairs.\n";
     std::cout << std::endl << std::endl;
 }
 
@@ -635,6 +719,30 @@ void parse_args(int argc, char **argv)
         {
             gREFERENCE_TIME = parse_space_separated_floats(i, argc, argv, 2); // Expecting 2 floats
         }
+        else if (arg == "--chain_ranges")
+        {
+            std::vector<int> chain_values;
+            while (i + 1 < argc && std::string(argv[i + 1]).rfind("--", 0) != 0)
+            {
+                try
+                {
+                    chain_values.emplace_back(std::stoi(argv[++i]));
+                }
+                catch (const std::invalid_argument &)
+                {
+                    throw std::runtime_error("Invalid integer value for --chain_ranges");
+                }
+            }
+            if (chain_values.empty() || chain_values.size() % 2 != 0)
+            {
+                throw std::runtime_error("--chain_ranges must be followed by one or more start/end integer pairs");
+            }
+            for (size_t range_index = 0; range_index < chain_values.size(); range_index += 2)
+            {
+                gCHAIN_RUN_RANGES.emplace_back(chain_values.at(range_index), chain_values.at(range_index + 1));
+            }
+        }
+        else if (arg == "--gain_with_offset") { gUSE_GAIN_WITH_OFFSET = true; }
         else if (arg == "--super_settings") { gUSE_SUPER_SETTINGS = true; }
         else
         {
@@ -684,6 +792,11 @@ void parse_args(int argc, char **argv)
         print_help();
         throw std::runtime_error("--ref_time must have exactly 2 float values");
     }
+    if (gUSE_GAIN_WITH_OFFSET && gROIarrs.size() < 2)
+    {
+        print_help();
+        throw std::runtime_error("--gain_with_offset requires at least two ROIs");
+    }
 
     if (gFIT_PEAK.size() != 3 && !gUSE_SUPER_SETTINGS)
     {
@@ -716,6 +829,10 @@ void parse_args(int argc, char **argv)
     std::cout << "  Fit Peak: ";
     for (const auto &val : gFIT_PEAK) { std::cout << val << " "; }
     std::cout << std::endl;
+    std::cout << "  Chained Ranges: ";
+    for (const auto &[chain_start, chain_end] : gCHAIN_RUN_RANGES) { std::cout << chain_start << "-" << chain_end << " "; }
+    std::cout << std::endl;
+    std::cout << "  Gain With Offset: " << std::boolalpha << gUSE_GAIN_WITH_OFFSET << std::endl;
     std::cout << "  Use Super Settings: " << std::boolalpha << gUSE_SUPER_SETTINGS << std::endl;
     auto conffile = get_output_conffilename();
 
@@ -732,10 +849,7 @@ int main(int argc, char **argv)
     // ROOT::EnableThreadSafety();
 
     TFile *matfile = TFile::Open(gROOTFILE.c_str(), "READ");
-    if (!matfile || matfile->IsZombie()) { throw std::runtime_error("Error! could not open/find the " + gROOTFILE + " file"); }
-    const std::string    matrix_path = gROOT_DIR_NAME + "/" + gMATRIX_NAME;
-    std::shared_ptr<TH2> TEMAT_original((TH2 *)matfile->Get(matrix_path.c_str()));
-    if (!TEMAT_original) { throw std::runtime_error("Error! could not open/find the " + matrix_path + " matrix"); }
+    auto   TEMAT_original = get_ill_matrix_from_file(matfile);
 
     for (size_t roi_index = 0; roi_index < gROIarrs.size(); ++roi_index)
     {
@@ -762,6 +876,7 @@ int main(int argc, char **argv)
         gSUPER_SETTINGS.cost                   = std::numeric_limits<double>::quiet_NaN();
 
         run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS, get_output_conffilename());
+        run_chained_ranges(gSUPER_SETTINGS);
         return 0;
     }
 
@@ -790,6 +905,7 @@ int main(int argc, char **argv)
 
     gSUPER_SETTINGS = result.front();
     run_ccm_super_settings(TEMAT_original, gSUPER_SETTINGS, get_output_conffilename());
+    run_chained_ranges(gSUPER_SETTINGS);
 
     return 0;
 }
