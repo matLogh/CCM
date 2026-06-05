@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <utility>
 #include <string>
 #include <vector>
@@ -122,6 +123,60 @@ std::vector<RegionOfInterest> make_rois(const std::shared_ptr<TH2> &matrix)
         ROIs.emplace_back(RegionOfInterest(matrix, roi.at(1), roi.at(2), roi.at(3), roi.at(4), roi.at(0)));
     }
     return ROIs;
+}
+
+void read_roi_file(const std::string &filename)
+{
+    std::ifstream input(filename);
+    if (!input.is_open()) { throw std::runtime_error("Could not open ROI file: " + filename); }
+
+    std::string line;
+    size_t      line_number = 0;
+    while (std::getline(input, line))
+    {
+        ++line_number;
+        const auto comment_pos = line.find('#');
+        if (comment_pos != std::string::npos) { line.erase(comment_pos); }
+
+        std::istringstream stream(line);
+        std::string        keyword;
+        stream >> keyword;
+        if (keyword.empty()) { continue; }
+
+        std::vector<float> values;
+        float              value;
+        while (stream >> value) { values.emplace_back(value); }
+
+        std::string extra;
+        if (stream.clear(); stream >> extra)
+        {
+            throw std::runtime_error("ROI file " + filename + " line " + std::to_string(line_number) + " contains a non-numeric value: " + extra);
+        }
+
+        if (keyword == "ROI")
+        {
+            if (values.size() != 5)
+            {
+                throw std::runtime_error("ROI file " + filename + " line " + std::to_string(line_number) +
+                                         " must contain exactly 5 ROI numbers: desired low high shift_low shift_high");
+            }
+            gROIarrs.emplace_back(std::move(values));
+        }
+        else if (keyword == "ref_time")
+        {
+            if (values.size() != 2)
+            {
+                throw std::runtime_error("ROI file " + filename + " line " + std::to_string(line_number) +
+                                         " must contain exactly 2 ref_time numbers");
+            }
+            gREFERENCE_TIME = std::move(values);
+        }
+        else
+        {
+            throw std::runtime_error("ROI file " + filename + " line " + std::to_string(line_number) +
+                                     " has unknown keyword '" + keyword + "'. Expected 'ref_time' or uppercase 'ROI'");
+        }
+    }
 }
 
 std::pair<double, double> get_diagnostic_energy_range()
@@ -586,6 +641,8 @@ void print_help()
               << "                                <5> - shift ROI by "
                  "maximum of <5> to "
                  "the RIGHT\n";
+    std::cout << "  --ROI_file <1>             Read ref_time and ROIs from a text file using lines "
+                 "'ref_time <low> <high>' and 'ROI <desired> <low> <high> <shift_low> <shift_high>'.\n";
 
     std::cout << "  --ROIsource <1>            Add ROI for calibration sources. "
                  "Currently "
@@ -714,6 +771,14 @@ void parse_args(int argc, char **argv)
         else if (arg == "--ROI")
         {
             gROIarrs.emplace_back(parse_space_separated_floats(i, argc, argv, 5)); // Expecting 5 floats
+        }
+        else if (arg == "--ROI_file" || arg == "--roi_file")
+        {
+            if (i + 1 < argc) { read_roi_file(argv[++i]); }
+            else
+            {
+                throw std::runtime_error("Missing value for --ROI_file");
+            }
         }
         else if (arg == "--ref_time")
         {
