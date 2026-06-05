@@ -1,3 +1,4 @@
 [submodule "modules/fitter"]
 	path = modules/fitter
 	url = https://github.com/matLogh/theuerkauf_fitter.git
+	update = none
