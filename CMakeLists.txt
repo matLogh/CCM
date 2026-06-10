@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 project(ccm VERSION 1.0.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 # ============================================================================
 # Project Configuration
 # ============================================================================
@@ -64,6 +66,7 @@ option(BUILD_SOLUTION_ILL "Build ILL solution applications" ON)
 option(BUILD_SOLUTION_PRISMA "Build PRISMA solution applications" ON)
 option(BUILD_SOLUTION_OSCAR "Build OSCAR solution applications" ON)
 option(BUILD_SOLUTION_SIMPLE_EXAMPLE "Build simple example solution application" ON)
+option(INSTALL_EXAMPLES "Install example and solution applications" ON)
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 
 # Helper function to apply strict warnings to CCM code
@@ -104,6 +107,7 @@ message(STATUS "  CXX Compiler: ${CMAKE_CXX_COMPILER}")
 message(STATUS "  Max Diagnostics: ${MAX_DIAGNOSTICS}")
 message(STATUS "  Build Examples: ${BUILD_EXAMPLES}")
 if(BUILD_EXAMPLES)
+    message(STATUS "  Install Examples: ${INSTALL_EXAMPLES}")
     message(STATUS "  Build Solution AGATA: ${BUILD_SOLUTION_AGATA}")
     message(STATUS "  Build Solution ILL: ${BUILD_SOLUTION_ILL}")
     message(STATUS "  Build Solution PRISMA: ${BUILD_SOLUTION_PRISMA}")
@@ -132,6 +136,22 @@ function(ccm_configure_target TARGET)
         set_target_properties(${TARGET} PROPERTIES
             MACOSX_RPATH ON
             BUILD_RPATH "${ROOT_LIBRARY_DIR};${ROOT_LIBRARY_DIRS}"
+        )
+    endif()
+endfunction()
+
+function(ccm_install_library TARGET)
+    install(TARGETS ${TARGET}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endfunction()
+
+function(ccm_install_executable TARGET)
+    if(INSTALL_EXAMPLES)
+        install(TARGETS ${TARGET}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         )
     endif()
 endfunction()
