@@ -48,7 +48,7 @@ Long64_t get_first_timestamp(const std::shared_ptr<TH2> temat)
     throw std::runtime_error("empty matrix?");
 }
 
-bool modify_conffile(const std::string &filename, std::vector<std::pair<double, double>> &cut_ranges)
+bool modify_conffile(const std::string &filename, const std::vector<std::pair<double, double>> &cut_ranges)
 {
     if (cut_ranges.empty()) { return false; }
     // convert cut ranges to timestamp format and sort them by start time
@@ -56,13 +56,32 @@ bool modify_conffile(const std::string &filename, std::vector<std::pair<double, 
     cut_ranges_ts.reserve(cut_ranges.size());
     for (const auto &cut : cut_ranges)
     {
-        cut_ranges_ts.push_back({static_cast<Long64_t>(cut.first) * MINUTE_TO_TIMESTAMPS, static_cast<Long64_t>(cut.second) * MINUTE_TO_TIMESTAMPS});
+        cut_ranges_ts.push_back({static_cast<Long64_t>(cut.first * static_cast<double>(MINUTE_TO_TIMESTAMPS)),
+                                 static_cast<Long64_t>(cut.second * static_cast<double>(MINUTE_TO_TIMESTAMPS))});
         // std::cout << "TS from " << cut_ranges_ts.back().first << " to " << cut_ranges_ts.back().second << std::endl;
         // std::cout << "   minutes from " << cut_ranges_ts.back().first / MINUTE_TO_TIMESTAMPS << " to "
         //           << cut_ranges_ts.back().second / MINUTE_TO_TIMESTAMPS << std::endl;
     }
 
     std::sort(cut_ranges_ts.begin(), cut_ranges_ts.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+    cut_ranges_ts.erase(std::remove_if(cut_ranges_ts.begin(), cut_ranges_ts.end(), [](const auto &cut) { return cut.second <= cut.first; }),
+                        cut_ranges_ts.end());
+    if (cut_ranges_ts.empty()) { return false; }
+
+    std::vector<std::pair<Long64_t, Long64_t>> merged_cut_ranges_ts;
+    merged_cut_ranges_ts.reserve(cut_ranges_ts.size());
+    for (const auto &cut : cut_ranges_ts)
+    {
+        if (merged_cut_ranges_ts.empty() || cut.first > merged_cut_ranges_ts.back().second)
+        {
+            merged_cut_ranges_ts.push_back(cut);
+        }
+        else
+        {
+            merged_cut_ranges_ts.back().second = std::max(merged_cut_ranges_ts.back().second, cut.second);
+        }
+    }
+    cut_ranges_ts = std::move(merged_cut_ranges_ts);
 
     // helper function to format a line for the conf file
     auto format_line = [](Long64_t ts_start, Long64_t ts_end, double gain) {
@@ -71,6 +90,18 @@ bool modify_conffile(const std::string &filename, std::vector<std::pair<double, 
             << std::setw(22) << gain;
         return out.str();
     };
+
+    const std::filesystem::path conf_path(filename);
+    if (conf_path.has_parent_path())
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(conf_path.parent_path(), ec);
+        if (ec)
+        {
+            std::cerr << "error creating conf directory " << conf_path.parent_path() << ": " << ec.message() << std::endl;
+            return false;
+        }
+    }
 
     // if file exist, create a backup
     const bool file_exists = std::filesystem::exists(filename);
@@ -92,6 +123,7 @@ bool modify_conffile(const std::string &filename, std::vector<std::pair<double, 
     if (!file_exists)
     {
         Long64_t cursor = 0;
+        lines.push_back("#             TS_start                TS_end                  gain");
         for (const auto &cut : cut_ranges_ts)
         {
             if (cut.first > cursor) { lines.push_back(format_line(cursor, cut.first, 1.0)); }
@@ -110,20 +142,7 @@ bool modify_conffile(const std::string &filename, std::vector<std::pair<double, 
             return false;
         }
 
-        auto overlaps_any_cut = [&cut_ranges_ts](const Long64_t ts_start, const Long64_t ts_end, std::pair<Long64_t, Long64_t> &overlapping_cut) {
-            for (const auto &cut : cut_ranges_ts)
-            {
-                if ((ts_start >= cut.first && cut.first <= ts_end) || (ts_start <= cut.second && ts_end >= cut.second))
-                {
-                    overlapping_cut = cut;
-                    return true;
-                }
-            }
-            return false;
-        };
-
         std::string line;
-        Long64_t    cursor = -999;
         while (std::getline(conf_file, line))
         {
             std::istringstream ls(line);
@@ -137,33 +156,43 @@ bool modify_conffile(const std::string &filename, std::vector<std::pair<double, 
                 continue;
             }
 
-            if (cursor == -999) { cursor = ts_start; }
-            if (cursor > ts_end) { continue; }
-
-            std::pair<Long64_t, Long64_t> overlapping_cut;
-            if (overlaps_any_cut(ts_start, ts_end, overlapping_cut))
+            if (ts_end <= ts_start)
             {
-                if (cursor < overlapping_cut.first)
+                lines.push_back(line);
+                continue;
+            }
+
+            bool     line_modified = false;
+            Long64_t cursor        = ts_start;
+            for (const auto &cut : cut_ranges_ts)
+            {
+                if (cut.second <= cursor) { continue; }
+                if (cut.first >= ts_end) { break; }
+
+                if (cursor < cut.first)
                 {
-                    lines.push_back(format_line(cursor, overlapping_cut.first, gain));
-                    cursor = overlapping_cut.first;
+                    lines.push_back(format_line(cursor, std::min(cut.first, ts_end), gain));
+                    cursor = std::min(cut.first, ts_end);
                 }
-                if (cursor != overlapping_cut.second)
+
+                const Long64_t dead_start = std::max(cursor, cut.first);
+                const Long64_t dead_end   = std::min(ts_end, cut.second);
+                if (dead_start < dead_end)
                 {
-                    lines.push_back(format_line(cursor, overlapping_cut.second, GAIN_FACTOR_TO_REMOVE_DATA));
-                    cursor = overlapping_cut.second;
+                    lines.push_back(format_line(dead_start, dead_end, GAIN_FACTOR_TO_REMOVE_DATA));
+                    cursor        = dead_end;
+                    line_modified = true;
                 }
-                if (ts_end > cursor)
-                {
-                    lines.push_back(format_line(cursor, ts_end, gain));
-                    cursor = ts_end;
-                }
+            }
+
+            if (line_modified)
+            {
+                if (cursor < ts_end) { lines.push_back(format_line(cursor, ts_end, gain)); }
                 modified = true;
             }
             else
             {
                 lines.push_back(line);
-                cursor = std::max(cursor, ts_end);
             }
         }
         conf_file.close();
