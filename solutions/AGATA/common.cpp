@@ -202,13 +202,18 @@ void parse_ROI_source(char *argv, std::vector<float> &ROI, std::vector<float> &f
 
 std::string get_conffilename(const std::string &dir, const int run, const std::string &crystal)
 {
-    std::string conffile = dir + "/" + "run_" + fourCharInt(run) + "/Conf/" + crystal + "/TimeEvoCC.conf";
+    std::string conffile = dir;
+    if (!conffile.empty() && conffile.back() != '/') { conffile += "/"; }
+    conffile += "run_" + fourCharInt(run) + "/Conf/" + crystal + "/TimeEvoCC.conf";
     return conffile;
 }
 
 std::string get_rootfilename(const std::string &dir, const int run, const std::string &crystal)
 {
-    return dir + "/temat_" + fourCharInt(run) + "_" + crystal + ".root";
+    std::string rootfile = dir;
+    if (!rootfile.empty() && rootfile.back() != '/') { rootfile += "/"; }
+    rootfile += "temat_" + fourCharInt(run) + "_" + crystal + ".root";
+    return rootfile;
 }
 
 std::string get_matrixname(const std::string &crystal) { return "hE0_TS_" + crystal; }
