@@ -34,7 +34,7 @@ bool      gPRINTDEAD                         = false;
 std::vector<std::shared_ptr<TObject>> gROOTOBJECTS;
 
 const Long64_t MINUTE_TO_TIMESTAMPS       = 60l * 100000000l;
-const double   GAIN_FACTOR_TO_REMOVE_DATA = 0.;
+const double   GAIN_FACTOR_TO_REMOVE_DATA = -1.;
 
 Long64_t get_first_timestamp(const std::shared_ptr<TH2> temat)
 {
@@ -50,7 +50,13 @@ Long64_t get_first_timestamp(const std::shared_ptr<TH2> temat)
 
 bool modify_conffile(const std::string &filename, const std::vector<std::pair<double, double>> &cut_ranges)
 {
+    // std::cout << "modifying conf file " << filename << " with " << cut_ranges.size() << " cut ranges" << std::endl;
+    // for (const auto &[start, end] : cut_ranges)
+    // {
+    //     std::cout << "   from " << start * MINUTE_TO_TIMESTAMPS << " to " << end * MINUTE_TO_TIMESTAMPS << std::endl;
+    // }
     if (cut_ranges.empty()) { return false; }
+
     // convert cut ranges to timestamp format and sort them by start time
     std::vector<std::pair<Long64_t, Long64_t>> cut_ranges_ts;
     cut_ranges_ts.reserve(cut_ranges.size());
@@ -72,10 +78,7 @@ bool modify_conffile(const std::string &filename, const std::vector<std::pair<do
     merged_cut_ranges_ts.reserve(cut_ranges_ts.size());
     for (const auto &cut : cut_ranges_ts)
     {
-        if (merged_cut_ranges_ts.empty() || cut.first > merged_cut_ranges_ts.back().second)
-        {
-            merged_cut_ranges_ts.push_back(cut);
-        }
+        if (merged_cut_ranges_ts.empty() || cut.first > merged_cut_ranges_ts.back().second) { merged_cut_ranges_ts.push_back(cut); }
         else
         {
             merged_cut_ranges_ts.back().second = std::max(merged_cut_ranges_ts.back().second, cut.second);
