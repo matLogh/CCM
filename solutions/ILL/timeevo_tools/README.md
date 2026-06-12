@@ -1,7 +1,7 @@
 # Drift Correction Time-Evolution Tools
 
 This directory contains two ROOT macros for combining and inspecting detector
-time-evolution histograms:
+time-evolution histograms written by `solveTimeEvo_ILL`:
 
 ```text
 combine_offset_gain_timeevo.C
