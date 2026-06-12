@@ -1,3 +1,7 @@
 /example/build
 /build 
 /.vscode
+
+# Local ILL scratch files
+/solutions/ILL/*.local_backup_*.cpp
+/solutions/ILL/simple_ILL_fw.cpp

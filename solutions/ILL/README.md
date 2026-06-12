@@ -169,3 +169,8 @@ The `simple_ILL.cpp` file is a hardcoded example used for quick local tests and
 plotting. It reads a specific matrix from `RunVsEnergy_all.root`, builds a CCM
 object directly in C++, writes shift and fit tables, and saves diagnostic ROOT
 output. For production use, prefer `detectTimeEvo_ILL` and `solveTimeEvo_ILL`.
+
+## Helper scripts
+
+Some simple ROOT scripts were added to `./timeevo_tools` to quickly visualize
+and check the results of the time evolution correction.
