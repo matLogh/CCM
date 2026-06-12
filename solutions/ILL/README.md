@@ -21,7 +21,7 @@ detectTimeEvo_ILL --help
 solveTimeEvo_ILL --help
 ```
 
-## Automated time evolution detection (not tested)
+## Automated time evolution detection (not tested with ILL data)
 
 The `detectTimeEvo_ILL` executable checks whether one detector, or all detectors,
 show an energy shift above a configurable threshold. It automatically chooses a
