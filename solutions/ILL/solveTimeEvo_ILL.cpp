@@ -68,6 +68,7 @@ std::vector<float> gREFERENCE_TIME;
 std::vector<float> gFIT_PEAK;
 bool               gUSE_SUPER_SETTINGS{false};
 bool               gUSE_GAIN_WITH_OFFSET{false};
+bool               gUSE_GAIN_WITH_OFFSET_AND_SQRT{false};
 std::string        gROOTFILE      = "";
 int                gSTART_RUN     = -1;
 int                gEND_RUN       = -1;
@@ -98,6 +99,7 @@ std::string get_output_minimization_filename() { return (get_ill_output_base().s
 
 std::string get_correction_formula()
 {
+    if (gUSE_GAIN_WITH_OFFSET_AND_SQRT) { return "[0] + [1]*sqrt(x) + [2]*x"; }
     return gUSE_GAIN_WITH_OFFSET ? "[0] + [1]*x" : "[0]*x";
 }
 
@@ -236,7 +238,11 @@ void write_timeevo_conf_format(std::shared_ptr<CCM> corrections, std::string fna
     double run;
 
     // Write the header
-    if (gUSE_GAIN_WITH_OFFSET)
+    if (gUSE_GAIN_WITH_OFFSET_AND_SQRT)
+    {
+        file << "#" << std::setw(15) << "run" << std::setw(22) << "offset" << std::setw(22) << "sqrt_gain" << std::setw(22) << "gain" << "\n";
+    }
+    else if (gUSE_GAIN_WITH_OFFSET)
     {
         file << "#" << std::setw(15) << "run" << std::setw(22) << "offset" << std::setw(22) << "gain" << "\n";
     }
@@ -252,7 +258,14 @@ void write_timeevo_conf_format(std::shared_ptr<CCM> corrections, std::string fna
         const auto fit = corrections->GetCorrectionFit(run);
 
         file << std::fixed << std::setprecision(0) << std::setw(16) << static_cast<Long64_t>(std::llround(run));
-        if (gUSE_GAIN_WITH_OFFSET)
+        if (gUSE_GAIN_WITH_OFFSET_AND_SQRT)
+        {
+            const auto offset    = fit.coef.size() == 3 ? fit.coef.at(0) : 0.0;
+            const auto sqrt_gain = fit.coef.size() == 3 ? fit.coef.at(1) : 0.0;
+            const auto gain      = fit.coef.size() == 3 ? fit.coef.at(2) : 0.0;
+            file << std::fixed << std::setprecision(10) << std::setw(22) << offset << std::setw(22) << sqrt_gain << std::setw(22) << gain << "\n";
+        }
+        else if (gUSE_GAIN_WITH_OFFSET)
         {
             const auto offset = fit.coef.size() == 2 ? fit.coef.at(0) : 0.0;
             const auto gain   = fit.coef.size() == 2 ? fit.coef.at(1) : (fit.coef.size() == 1 ? fit.coef.front() : 0.0);
@@ -667,6 +680,8 @@ void print_help()
                  "parameters \n";
     std::cout << "  --gain_with_offset         Use [0] + [1]*x correction instead of [0]*x. "
                  "Requires at least two ROIs.\n";
+    std::cout << "  --gain_with_offset_and_sqrt Use [0] + [1]*sqrt(x) + [2]*x correction instead of [0]*x. "
+                 "Requires at least three ROIs.\n";
     std::cout << "  --chain_ranges <s> <e> [...] Run additional ILL run ranges using the "
                  "reference vector from --start_run/--end_run. Values must be "
                  "start/end pairs.\n";
@@ -808,6 +823,7 @@ void parse_args(int argc, char **argv)
             }
         }
         else if (arg == "--gain_with_offset") { gUSE_GAIN_WITH_OFFSET = true; }
+        else if (arg == "--gain_with_offset_and_sqrt") { gUSE_GAIN_WITH_OFFSET_AND_SQRT = true; }
         else if (arg == "--super_settings") { gUSE_SUPER_SETTINGS = true; }
         else
         {
@@ -857,10 +873,20 @@ void parse_args(int argc, char **argv)
         print_help();
         throw std::runtime_error("--ref_time must have exactly 2 float values");
     }
+    if (gUSE_GAIN_WITH_OFFSET && gUSE_GAIN_WITH_OFFSET_AND_SQRT)
+    {
+        print_help();
+        throw std::runtime_error("--gain_with_offset and --gain_with_offset_and_sqrt cannot be used together");
+    }
     if (gUSE_GAIN_WITH_OFFSET && gROIarrs.size() < 2)
     {
         print_help();
         throw std::runtime_error("--gain_with_offset requires at least two ROIs");
+    }
+    if (gUSE_GAIN_WITH_OFFSET_AND_SQRT && gROIarrs.size() < 3)
+    {
+        print_help();
+        throw std::runtime_error("--gain_with_offset_and_sqrt requires at least three ROIs");
     }
 
     if (gFIT_PEAK.size() != 3 && !gUSE_SUPER_SETTINGS)
@@ -898,6 +924,7 @@ void parse_args(int argc, char **argv)
     for (const auto &[chain_start, chain_end] : gCHAIN_RUN_RANGES) { std::cout << chain_start << "-" << chain_end << " "; }
     std::cout << std::endl;
     std::cout << "  Gain With Offset: " << std::boolalpha << gUSE_GAIN_WITH_OFFSET << std::endl;
+    std::cout << "  Gain With Offset And Sqrt: " << std::boolalpha << gUSE_GAIN_WITH_OFFSET_AND_SQRT << std::endl;
     std::cout << "  Use Super Settings: " << std::boolalpha << gUSE_SUPER_SETTINGS << std::endl;
     auto conffile = get_output_conffilename();
 

@@ -15,8 +15,3 @@ target_link_libraries(simple_ILL ${ROOT_LIBRARIES} ccm)
 ccm_configure_target(simple_ILL)
 set_target_properties(simple_ILL PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 ccm_install_executable(simple_ILL)
-
-# add_executable(simple_ILL_fw simple_ILL_fw.cpp)
-# target_link_libraries(simple_ILL_fw ${ROOT_LIBRARIES} ccm)
-# ccm_configure_target(simple_ILL_fw)
-# set_target_properties(simple_ILL_fw PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
