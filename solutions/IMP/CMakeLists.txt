@@ -1,0 +1,17 @@
+add_executable(solveTimeEvo_IMP solveTimeEvo_IMP.cpp)
+target_link_libraries(solveTimeEvo_IMP theuerkauf_fitter ${ROOT_LIBRARIES} ccm)
+ccm_configure_target(solveTimeEvo_IMP)
+set_target_properties(solveTimeEvo_IMP PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+ccm_install_executable(solveTimeEvo_IMP)
+
+add_executable(detectTimeEvo_IMP detectTimeEvo_IMP.cpp)
+target_link_libraries(detectTimeEvo_IMP ${ROOT_LIBRARIES} ccm)
+ccm_configure_target(detectTimeEvo_IMP)
+set_target_properties(detectTimeEvo_IMP PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+ccm_install_executable(detectTimeEvo_IMP)
+
+add_executable(simple_IMP simple_IMP.cpp)
+target_link_libraries(simple_IMP ${ROOT_LIBRARIES} ccm)
+ccm_configure_target(simple_IMP)
+set_target_properties(simple_IMP PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+ccm_install_executable(simple_IMP)
