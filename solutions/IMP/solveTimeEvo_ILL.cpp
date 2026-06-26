@@ -243,29 +243,29 @@ void write_timeevo_conf_format(std::shared_ptr<CCM> corrections, std::string fna
     std::cout << "Corrections are being written to: " << fname << std::endl;
 
     auto   matrix = corrections->GetInputMatrix();
-    double run;
+    double time;
 
     // Write the header
     if (gUSE_GAIN_WITH_OFFSET_AND_SQRT)
     {
-        file << "#" << std::setw(15) << "run" << std::setw(22) << "offset" << std::setw(22) << "sqrt_gain" << std::setw(22) << "gain" << "\n";
+        file << "#" << std::setw(15) << "time" << std::setw(22) << "offset" << std::setw(22) << "sqrt_gain" << std::setw(22) << "gain" << "\n";
     }
     else if (gUSE_GAIN_WITH_OFFSET)
     {
-        file << "#" << std::setw(15) << "run" << std::setw(22) << "offset" << std::setw(22) << "gain" << "\n";
+        file << "#" << std::setw(15) << "time" << std::setw(22) << "offset" << std::setw(22) << "gain" << "\n";
     }
     else
     {
-        file << "#" << std::setw(15) << "run" << std::setw(22) << "gain" << "\n";
+        file << "#" << std::setw(15) << "time" << std::setw(22) << "gain" << "\n";
     }
 
-    for (int bin = 1; bin < matrix->GetXaxis()->GetNbins(); bin++)
+    for (int bin = 1; bin <= matrix->GetXaxis()->GetNbins(); bin++)
     {
-        run = matrix->GetXaxis()->GetBinCenter(bin);
+        time = matrix->GetXaxis()->GetBinCenter(bin);
 
-        const auto fit = corrections->GetCorrectionFit(run);
+        const auto fit = corrections->GetCorrectionFit(time);
 
-        file << std::fixed << std::setprecision(0) << std::setw(16) << static_cast<Long64_t>(std::llround(run));
+        file << std::fixed << std::setprecision(10) << std::setw(16) << time;
         if (gUSE_GAIN_WITH_OFFSET_AND_SQRT)
         {
             const auto offset    = fit.coef.size() == 3 ? fit.coef.at(0) : 0.0;
