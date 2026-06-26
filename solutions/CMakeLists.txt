@@ -6,6 +6,10 @@ if(BUILD_SOLUTION_ILL)
     add_subdirectory(ILL)
 endif()
 
+if(BUILD_SOLUTION_IMP)
+    add_subdirectory(IMP)
+endif()
+
 if(BUILD_SOLUTION_PRISMA)
     add_subdirectory(PRISMA)
 endif()
