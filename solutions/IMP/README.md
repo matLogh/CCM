@@ -60,6 +60,18 @@ solveTimeEvo_IMP \
   --super_settings
 ```
 
+Example for group `g`, detector 8:
+
+```bash
+solveTimeEvo_IMP \
+  --rootfile ./HistAll.root \
+  --group g \
+  --detector 8 \
+  --ROI 23732 23520 23818 -100 20 \
+  --ref_time 18 19 \
+  --super_settings
+```
+
 You can also select a histogram by exact name:
 
 ```bash
