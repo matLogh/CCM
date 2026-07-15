@@ -162,16 +162,46 @@ endfunction()
 
 add_definitions("-DDATA_PATH=\"${PROJECT_SOURCE_DIR}\"")
 
-# Update git submodules
-execute_process(
-    COMMAND git submodule update --init --recursive
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    RESULT_VARIABLE result
+# Initialize required git submodules when configuring from a git checkout.
+# The fitter submodule is marked with "update = none" in .gitmodules, so use
+# an explicit checkout update only when the submodule has not been populated.
+find_package(Git QUIET)
+set(CCM_REQUIRED_SUBMODULES
+    modules/fitter
 )
 
-if(NOT result EQUAL 0)
-    message(FATAL_ERROR "Failed to update git submodules. Please check your repository.")
-endif()
+foreach(submodule IN LISTS CCM_REQUIRED_SUBMODULES)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${submodule}/CMakeLists.txt")
+        if(NOT GIT_FOUND)
+            message(FATAL_ERROR
+                "Required submodule '${submodule}' is missing, and Git was not found. "
+                "Please install Git or initialize the submodule manually."
+            )
+        endif()
+
+        message(STATUS "Initializing git submodule: ${submodule}")
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive --checkout -- ${submodule}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            RESULT_VARIABLE submodule_result
+            OUTPUT_VARIABLE submodule_output
+            ERROR_VARIABLE submodule_error
+        )
+
+        if(NOT submodule_result EQUAL 0)
+            message(FATAL_ERROR
+                "Failed to initialize git submodule '${submodule}'.\n"
+                "${submodule_output}\n${submodule_error}"
+            )
+        endif()
+    endif()
+
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${submodule}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "Required submodule '${submodule}' is still missing after initialization."
+        )
+    endif()
+endforeach()
 
 
 
