@@ -1,5 +1,6 @@
 #include <TFile.h>
 #include <TGraph.h>
+#include <TH1.h>
 #include <TH2.h>
 #include <algorithm>
 #include <filesystem>
@@ -30,6 +31,8 @@ bool      gMODIFY_TIMEEVO_CONF               = false;
 bool      gDRAW_CUTS                         = true;
 double    gTHRESHOLD                         = 0.7;
 bool      gPRINTDEAD                         = false;
+bool      gSAVE_RESULT                       = false;
+std::string gSAVE_FILENAME                   = "";
 
 std::vector<std::shared_ptr<TObject>> gROOTOBJECTS;
 
@@ -46,6 +49,24 @@ Long64_t get_first_timestamp(const std::shared_ptr<TH2> temat)
         if (temat->Integral(binx, binx, 1, nbinsy) > 0) { return static_cast<Long64_t>(temat->GetXaxis()->GetBinLowEdge(binx)); }
     }
     throw std::runtime_error("empty matrix?");
+}
+
+std::shared_ptr<TH1> make_events_per_time_plot(const std::shared_ptr<TH2> temat)
+{
+    if (!temat) { throw std::runtime_error("Cannot make events-per-time plot from a null matrix"); }
+
+    std::shared_ptr<TH1> events_per_time(
+        temat->ProjectionX(Form("EventsPerTime_%s", temat->GetName()), 1, temat->GetYaxis()->GetNbins(), "e"));
+    events_per_time->SetDirectory(nullptr);
+    events_per_time->SetTitle(Form("Events per time for %s", temat->GetName()));
+
+    const char *time_axis_title = temat->GetXaxis()->GetTitle();
+    events_per_time->GetXaxis()->SetTitle(time_axis_title && std::string(time_axis_title).size() > 0 ? time_axis_title : "Time");
+    events_per_time->GetYaxis()->SetTitle("Events");
+    events_per_time->SetLineColor(kBlue + 1);
+    events_per_time->SetLineWidth(2);
+
+    return events_per_time;
 }
 
 bool modify_conffile(const std::string &filename, const std::vector<std::pair<double, double>> &cut_ranges)
@@ -230,14 +251,22 @@ bool modify_conffile(const std::string &filename, const std::vector<std::pair<do
     return true;
 }
 
-void draw_cuts(std::shared_ptr<TH2> temat, const std::vector<std::pair<double, double>> &to_be_cut)
+std::string get_validation_output_filename(const int run, const std::string &crystal)
 {
-    if (to_be_cut.empty()) { return; }
+    if (!gSAVE_FILENAME.empty()) { return gSAVE_FILENAME; }
+    return "vCheck_run" + fourCharInt(run) + "_crys" + crystal + ".root";
+}
 
+void draw_cuts(std::shared_ptr<TH2> temat, const std::vector<std::pair<double, double>> &to_be_cut, const std::string &save_filename = "")
+{
     gROOTOBJECTS.push_back(temat);
+    auto events_per_time = make_events_per_time_plot(temat);
+    gROOTOBJECTS.push_back(events_per_time);
 
     std::shared_ptr<TCanvas> c(new TCanvas(Form("Cuts_%s", temat->GetName()), Form("Cuts_%s", temat->GetName()), 1400, 1000));
     gROOTOBJECTS.push_back(c);
+    c->Divide(1, 2);
+    c->cd(1);
     c->SetGrid();
     c->SetCrosshair(1);
     temat->Draw("colz");
@@ -262,7 +291,51 @@ void draw_cuts(std::shared_ptr<TH2> temat, const std::vector<std::pair<double, d
         gr->Draw("same F");
     }
 
+    c->cd(2);
+    gPad->SetGrid();
+    gPad->SetCrosshair(1);
+    events_per_time->Draw("hist");
+    const double ymax = events_per_time->GetMaximum() > 0.0 ? events_per_time->GetMaximum() * 1.05 : 1.0;
+
+    for (const auto &cut : to_be_cut)
+    {
+        std::shared_ptr<TGraph> gr(new TGraph());
+        gROOTOBJECTS.push_back(gr);
+        gr->SetName(Form("EventsPerTimeCutGraph_%f_%f", cut.first, cut.second));
+        gr->AddPoint(cut.first, 0.0);
+        gr->AddPoint(cut.first, ymax);
+        gr->AddPoint(cut.second, ymax);
+        gr->AddPoint(cut.second, 0.0);
+        gr->SetFillColor(kRed);
+        gr->SetFillStyle(3013);
+        gr->SetLineColor(kRed);
+        gr->SetLineWidth(2);
+        gr->SetBit(TObject::kCannotPick);
+
+        gr->Draw("same F");
+    }
+
     c->Update();
+
+    if (!save_filename.empty())
+    {
+        if (!can_create_file(save_filename))
+        {
+            std::cerr << "Cannot create output file: " << save_filename << std::endl;
+            return;
+        }
+        TFile out_file(save_filename.c_str(), "recreate");
+        if (!out_file.IsOpen())
+        {
+            std::cerr << "Error opening output file: " << save_filename << std::endl;
+            return;
+        }
+        out_file.cd();
+        c->Write();
+        temat->Write();
+        events_per_time->Write();
+        std::cout << "Saved validation check canvas to: " << save_filename << std::endl;
+    }
 }
 
 double calculate_total_duration(const std::vector<std::pair<double, double>> &cut_times)
@@ -375,6 +448,8 @@ void print_help()
               << "  --threshold <value>      Valid bin content threshold calculated using threshold factor multiplied average integral for given "
                  "detector (default: 0.7)\n"
               << "  --nodraw                 Do not draw missing-validation cut windows\n"
+              << "  --save [filename]        Save each validation canvas to a ROOT file. If filename is omitted, use "
+                 "vCheck_runXXXX_crysYYY.root\n"
               << "  --printdead              If validation holes are found, print their duration in seconds starting from first non-zero bin\n"
               << "  --modify-conf            If holes are found, put zero gain in overlapping "
                  "TimeEvoCC.conf bins\n"
@@ -451,6 +526,11 @@ void parse_args(int argc, char **argv)
             }
         }
         else if (arg == "--nodraw") { gDRAW_CUTS = false; }
+        else if (arg == "--save" || arg == "--save-result")
+        {
+            gSAVE_RESULT = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-') { gSAVE_FILENAME = argv[++i]; }
+        }
         else if (arg == "--modify-conf") { gMODIFY_TIMEEVO_CONF = true; }
         else if (arg == "--printdead") { gPRINTDEAD = true; }
 
@@ -463,6 +543,10 @@ void parse_args(int argc, char **argv)
 
     if (gRUNLIST.empty()) { throw std::invalid_argument("--run must be provided with at least one run number"); }
     if (gCRYSTALLIST.empty()) { throw std::invalid_argument("--crystal must be provided with at least one crystal"); }
+    if (gSAVE_RESULT && !gSAVE_FILENAME.empty() && gRUNLIST.size() * gCRYSTALLIST.size() > 1)
+    {
+        throw std::invalid_argument("--save filename can only be used with one run/crystal pair. Omit filename to use default per-crystal names.");
+    }
 
     std::cout << "Parameters used are:" << std::endl;
     std::cout << "Run number(s):    ";
@@ -474,6 +558,8 @@ void parse_args(int argc, char **argv)
     std::cout << "Data directory:        " << gDIR << std::endl;
     std::cout << "Threshold:             " << gTHRESHOLD << std::endl;
     std::cout << "Draw cuts:             " << std::boolalpha << gDRAW_CUTS << std::endl;
+    std::cout << "Save result:           " << std::boolalpha << gSAVE_RESULT << std::endl;
+    if (gSAVE_RESULT && !gSAVE_FILENAME.empty()) { std::cout << "Save filename:         " << gSAVE_FILENAME << std::endl; }
     std::cout << "Modify TimeEvo conf:   " << std::boolalpha << gMODIFY_TIMEEVO_CONF << std::endl;
     std::cout << "-----------------------------------------------------------" << std::endl;
 }
@@ -561,7 +647,10 @@ int main(int argc, char **argv)
                 std::cout << "Lost due to validation: run " << run << " cry " << crystal << " " << std::fixed << std::setprecision(2)
                           << missing_duration << "s out of total run duration " << total_run_duration << "s " << percentage << "%" << std::endl;
                 std::cout << "Found validation " << cut_times.size() << " holes for run " << run << " crystal " << crystal << ": " << std::endl;
-                if (gDRAW_CUTS) { draw_cuts(TEMAT_original, cut_times); }
+            }
+            if (gDRAW_CUTS || gSAVE_RESULT)
+            {
+                draw_cuts(TEMAT_original, cut_times, gSAVE_RESULT ? get_validation_output_filename(run, crystal) : "");
             }
             ts_offset = std::min(ts_offset, get_first_timestamp(TEMAT_original));
         }
