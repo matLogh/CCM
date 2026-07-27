@@ -27,6 +27,8 @@ struct user_config
 
 std::vector<double> gENERGY_BINING{};
 
+const int gTEMAT_PADDING_BINS = 20;
+
 #include <filesystem>
 #include <iostream>
 
@@ -136,10 +138,14 @@ int SegmentsTimeEvo(int              runNr,
     std::cout << "maxTS: " << maxTS << std::endl;
 
     // allocate matrices
-    // 60 for minutes, 10e8 for 10ns to second
-    int minTime   = static_cast<int>(minTS / 6000000000) - 10;
-    int maxTime   = static_cast<int>(maxTS / 6000000000) + 10;
-    int nTimeBins = static_cast<int>(maxTime - minTime) * 60 / seconds_per_bin;
+    // TS is in 10 ns units; matrix time axis is in minutes.
+    const double time_bin_width_minutes = static_cast<double>(seconds_per_bin) / 60.0;
+    const double first_time             = static_cast<double>(minTS) * 1.e-8 / 60.0;
+    const double last_time              = static_cast<double>(maxTS) * 1.e-8 / 60.0;
+    const int    data_time_bins         = static_cast<int>((last_time - first_time) / time_bin_width_minutes) + 1;
+    const double minTime                = first_time - static_cast<double>(gTEMAT_PADDING_BINS) * time_bin_width_minutes;
+    const int    nTimeBins              = data_time_bins + 2 * gTEMAT_PADDING_BINS;
+    const double maxTime                = minTime + static_cast<double>(nTimeBins) * time_bin_width_minutes;
 
     std::cout << "time binning: " << nTimeBins << "\trange: " << minTime << " " << maxTime
               << std::endl;
@@ -304,10 +310,14 @@ int CoresTimeEvo(int                 runNr,
     std::cout << "minTS: " << minTS << "\n";
     std::cout << "maxTS: " << maxTS << std::endl;
 
-    // 60 for minutes, 10e8 for 10ns to second
-    int minTime   = static_cast<int>(minTS / 6000000000) - 10;
-    int maxTime   = static_cast<int>(maxTS / 6000000000) + 10;
-    int nTimeBins = static_cast<int>(maxTime - minTime) * 60 / seconds_per_bin;
+    // TS is in 10 ns units; matrix time axis is in minutes.
+    const double time_bin_width_minutes = static_cast<double>(seconds_per_bin) / 60.0;
+    const double first_time             = static_cast<double>(minTS) * 1.e-8 / 60.0;
+    const double last_time              = static_cast<double>(maxTS) * 1.e-8 / 60.0;
+    const int    data_time_bins         = static_cast<int>((last_time - first_time) / time_bin_width_minutes) + 1;
+    const double minTime                = first_time - static_cast<double>(gTEMAT_PADDING_BINS) * time_bin_width_minutes;
+    const int    nTimeBins              = data_time_bins + 2 * gTEMAT_PADDING_BINS;
+    const double maxTime                = minTime + static_cast<double>(nTimeBins) * time_bin_width_minutes;
 
     std::cout << "time binning: " << nTimeBins << "\trange: " << minTime << " " << maxTime
               << std::endl;

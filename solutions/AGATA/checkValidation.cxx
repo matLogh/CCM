@@ -26,17 +26,16 @@ std::vector<int>         gRUNLIST;
 std::vector<std::string> gCRYSTALLIST;
 // std::string gCONFDIR{""};
 std::string gDIR{""};
-// minimum number of holes is by default 2 to account for starting and ending padding of the temat
-const int gMINIMUM_NUMBER_OF_HOLES_TO_IGNORE = 2;
-bool      gMODIFY_TIMEEVO_CONF               = false;
-bool      gDRAW_CUTS                         = true;
-double    gTHRESHOLD                         = 0.7;
-bool      gPRINTDEAD                         = false;
-bool      gSAVE_RESULT                       = false;
-std::string gSAVE_FILENAME                   = "";
-bool      gUSE_MATRIX_ZOOM                   = false;
-double    gMATRIX_ZOOM_LOW                   = 0.0;
-double    gMATRIX_ZOOM_HIGH                  = 0.0;
+const int   gTEMAT_PADDING_BINS  = 20;
+bool        gMODIFY_TIMEEVO_CONF = false;
+bool        gDRAW_CUTS           = true;
+double      gTHRESHOLD           = 0.7;
+bool        gPRINTDEAD           = false;
+bool        gSAVE_RESULT         = false;
+std::string gSAVE_FILENAME       = "";
+bool        gUSE_MATRIX_ZOOM     = false;
+double      gMATRIX_ZOOM_LOW     = 0.0;
+double      gMATRIX_ZOOM_HIGH    = 0.0;
 
 std::vector<std::shared_ptr<TObject>> gROOTOBJECTS;
 
@@ -46,28 +45,29 @@ const double   GAIN_FACTOR_TO_REMOVE_DATA = -1.;
 struct ValidationCheckResult
 {
     std::vector<std::pair<double, double>> cut_times;
-    double                                average_integral   = 0.0;
-    double                                threshold_integral = 0.0;
+    double                                 average_integral   = 0.0;
+    double                                 threshold_integral = 0.0;
 };
 
-Long64_t get_first_timestamp(const std::shared_ptr<TH2> temat)
+double get_first_data_time(const std::shared_ptr<TH2> temat)
 {
     const int nbinsx = temat->GetXaxis()->GetNbins();
-    const int nbinsy = temat->GetYaxis()->GetNbins();
+    if (nbinsx <= 2 * gTEMAT_PADDING_BINS) { throw std::runtime_error("Matrix has fewer time bins than the configured validation padding"); }
+    return temat->GetXaxis()->GetBinLowEdge(gTEMAT_PADDING_BINS + 1);
+}
 
-    for (int binx = 1; binx < nbinsx; binx++)
-    {
-        if (temat->Integral(binx, binx, 1, nbinsy) > 0) { return static_cast<Long64_t>(temat->GetXaxis()->GetBinLowEdge(binx)); }
-    }
-    throw std::runtime_error("empty matrix?");
+double get_last_data_time(const std::shared_ptr<TH2> temat)
+{
+    const int nbinsx = temat->GetXaxis()->GetNbins();
+    if (nbinsx <= 2 * gTEMAT_PADDING_BINS) { throw std::runtime_error("Matrix has fewer time bins than the configured validation padding"); }
+    return temat->GetXaxis()->GetBinUpEdge(nbinsx - gTEMAT_PADDING_BINS);
 }
 
 std::shared_ptr<TH1> make_events_per_time_plot(const std::shared_ptr<TH2> temat)
 {
     if (!temat) { throw std::runtime_error("Cannot make events-per-time plot from a null matrix"); }
 
-    std::shared_ptr<TH1> events_per_time(
-        temat->ProjectionX(Form("EventsPerTime_%s", temat->GetName()), 1, temat->GetYaxis()->GetNbins(), "e"));
+    std::shared_ptr<TH1> events_per_time(temat->ProjectionX(Form("EventsPerTime_%s", temat->GetName()), 1, temat->GetYaxis()->GetNbins(), "e"));
     events_per_time->SetDirectory(nullptr);
     events_per_time->SetTitle(Form("Events per time for %s", temat->GetName()));
 
@@ -268,9 +268,7 @@ std::string get_validation_output_filename(const int run, const std::string &cry
     return "vCheck_run" + fourCharInt(run) + "_crys" + crystal + ".root";
 }
 
-void draw_cuts(std::shared_ptr<TH2> temat,
-               const ValidationCheckResult &validation,
-               const std::string          &save_filename = "")
+void draw_cuts(std::shared_ptr<TH2> temat, const ValidationCheckResult &validation, const std::string &save_filename = "")
 {
     gROOTOBJECTS.push_back(temat);
     auto events_per_time = make_events_per_time_plot(temat);
@@ -308,8 +306,7 @@ void draw_cuts(std::shared_ptr<TH2> temat,
     c->cd(2);
     gPad->SetGrid();
     gPad->SetCrosshair(1);
-    const double reference_max =
-        std::max({events_per_time->GetMaximum(), validation.average_integral, validation.threshold_integral, 1.0});
+    const double reference_max = std::max({events_per_time->GetMaximum(), validation.average_integral, validation.threshold_integral, 1.0});
     events_per_time->SetMaximum(reference_max * 1.05);
     events_per_time->Draw("hist");
     const double ymax = events_per_time->GetMaximum();
@@ -332,8 +329,8 @@ void draw_cuts(std::shared_ptr<TH2> temat,
         gr->Draw("same F");
     }
 
-    const double xmin = events_per_time->GetXaxis()->GetXmin();
-    const double xmax = events_per_time->GetXaxis()->GetXmax();
+    const double           xmin = events_per_time->GetXaxis()->GetXmin();
+    const double           xmax = events_per_time->GetXaxis()->GetXmax();
     std::shared_ptr<TLine> average_line(new TLine(xmin, validation.average_integral, xmax, validation.average_integral));
     gROOTOBJECTS.push_back(average_line);
     average_line->SetLineColor(kGreen + 2);
@@ -386,16 +383,7 @@ double calculate_total_duration(const std::vector<std::pair<double, double>> &cu
     return total_duration;
 }
 
-double calculate_run_duration(const std::shared_ptr<TH2> temat)
-{
-    const int nbinsx = temat->GetXaxis()->GetNbins();
-    if (nbinsx <= 1) return 0.0;
-
-    double first_time = temat->GetXaxis()->GetBinLowEdge(1);
-    double last_time  = temat->GetXaxis()->GetBinUpEdge(nbinsx);
-
-    return last_time - first_time;
-}
+double calculate_run_duration(const std::shared_ptr<TH2> temat) { return get_last_data_time(temat) - get_first_data_time(temat); }
 
 double calculate_cut_padding(const std::vector<std::pair<double, double>> &cut_times)
 {
@@ -419,15 +407,19 @@ ValidationCheckResult getMissingValidation(const std::shared_ptr<TH2> temat, con
 {
     assert(average_threshold > 0.0 && average_threshold <= 2.0);
 
-    const int nbinsx = temat->GetXaxis()->GetNbins();
-    const int nbinsy = temat->GetYaxis()->GetNbins();
+    const int nbinsx         = temat->GetXaxis()->GetNbins();
+    const int nbinsy         = temat->GetYaxis()->GetNbins();
+    const int first_data_bin = gTEMAT_PADDING_BINS + 1;
+    const int last_data_bin  = nbinsx - gTEMAT_PADDING_BINS;
+
+    if (first_data_bin > last_data_bin) { throw std::runtime_error("Matrix has fewer time bins than the configured validation padding"); }
 
     std::vector<double> integrals;
     std::vector<double> times;
-    integrals.reserve(static_cast<size_t>(nbinsx));
-    times.reserve(static_cast<size_t>(nbinsx));
+    integrals.reserve(static_cast<size_t>(last_data_bin - first_data_bin + 1));
+    times.reserve(static_cast<size_t>(last_data_bin - first_data_bin + 1));
 
-    for (int binx = 1; binx < nbinsx; binx++)
+    for (int binx = first_data_bin; binx <= last_data_bin; binx++)
     {
         times.emplace_back(temat->GetXaxis()->GetBinCenter(binx));
         integrals.emplace_back(temat->Integral(binx, binx, 1, nbinsy));
@@ -438,6 +430,7 @@ ValidationCheckResult getMissingValidation(const std::shared_ptr<TH2> temat, con
         auto tmp = integrals;
         std::sort(tmp.begin(), tmp.end());
         tmp.erase(std::remove(tmp.begin(), tmp.end(), 0), tmp.end());
+        if (tmp.empty()) { throw std::runtime_error("Matrix has no non-zero time bins after removing configured padding"); }
 
         // average
         result.average_integral = std::accumulate(tmp.begin(), tmp.end(), 0.0) / static_cast<double>(tmp.size());
@@ -661,11 +654,10 @@ int main(int argc, char **argv)
     // TRint app("app", &argc, argv);
     TApplication app("app", 0, 0);
 
-    Long64_t ts_offset = std::numeric_limits<Long64_t>::max();
-
     for (const auto &run : gRUNLIST)
     {
         std::vector<std::vector<std::pair<double, double>>> cut_times_in_run;
+        double                                              run_time_offset = std::numeric_limits<double>::max();
         for (const auto &crystal : gCRYSTALLIST)
         {
             std::string rootfilename = get_rootfilename(gDIR, run, crystal);
@@ -684,15 +676,13 @@ int main(int argc, char **argv)
             }
             auto validation = getMissingValidation(TEMAT_original, gTHRESHOLD);
 
-            if (validation.cut_times.size() > gMINIMUM_NUMBER_OF_HOLES_TO_IGNORE)
+            // if (validation.cut_times.size() > gMINIMUM_NUMBER_OF_HOLES_TO_IGNORE)
+            if (!validation.cut_times.empty())
             {
                 cut_times_in_run.emplace_back(validation.cut_times);
 
                 double missing_duration   = calculate_total_duration(validation.cut_times);
                 double total_run_duration = calculate_run_duration(TEMAT_original);
-                double padding_duration   = calculate_cut_padding(validation.cut_times);
-                missing_duration -= padding_duration;
-                total_run_duration -= padding_duration;
 
                 // to seconds
                 missing_duration *= 60.0;
@@ -709,7 +699,7 @@ int main(int argc, char **argv)
             {
                 draw_cuts(TEMAT_original, validation, gSAVE_RESULT ? get_validation_output_filename(run, crystal) : "");
             }
-            ts_offset = std::min(ts_offset, get_first_timestamp(TEMAT_original));
+            run_time_offset = std::min(run_time_offset, get_first_data_time(TEMAT_original));
         }
         auto merged_cut_times = mergeIntervals(cut_times_in_run);
 
@@ -736,8 +726,8 @@ int main(int argc, char **argv)
             std::cout << "\n";
             for (const auto [ts_start, ts_stop] : merged_cut_times)
             {
-                double sec_start = (ts_start - static_cast<double>(ts_offset)) * 60.;
-                double sec_stop  = (ts_stop - static_cast<double>(ts_offset)) * 60.;
+                double sec_start = (ts_start - run_time_offset) * 60.;
+                double sec_stop  = (ts_stop - run_time_offset) * 60.;
                 if (sec_start < 0) sec_start = 0;
                 if (sec_stop < 0) continue;
                 std::cout << "DEAD_INTERVAL                   " << std::setprecision(1) << std::setw(10) << sec_start << " " << std::setw(10)
