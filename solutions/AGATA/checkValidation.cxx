@@ -2,6 +2,7 @@
 #include <TGraph.h>
 #include <TH1.h>
 #include <TH2.h>
+#include <TLegend.h>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -33,11 +34,21 @@ double    gTHRESHOLD                         = 0.7;
 bool      gPRINTDEAD                         = false;
 bool      gSAVE_RESULT                       = false;
 std::string gSAVE_FILENAME                   = "";
+bool      gUSE_MATRIX_ZOOM                   = false;
+double    gMATRIX_ZOOM_LOW                   = 0.0;
+double    gMATRIX_ZOOM_HIGH                  = 0.0;
 
 std::vector<std::shared_ptr<TObject>> gROOTOBJECTS;
 
 const Long64_t MINUTE_TO_TIMESTAMPS       = 60l * 100000000l;
 const double   GAIN_FACTOR_TO_REMOVE_DATA = -1.;
+
+struct ValidationCheckResult
+{
+    std::vector<std::pair<double, double>> cut_times;
+    double                                average_integral   = 0.0;
+    double                                threshold_integral = 0.0;
+};
 
 Long64_t get_first_timestamp(const std::shared_ptr<TH2> temat)
 {
@@ -257,7 +268,9 @@ std::string get_validation_output_filename(const int run, const std::string &cry
     return "vCheck_run" + fourCharInt(run) + "_crys" + crystal + ".root";
 }
 
-void draw_cuts(std::shared_ptr<TH2> temat, const std::vector<std::pair<double, double>> &to_be_cut, const std::string &save_filename = "")
+void draw_cuts(std::shared_ptr<TH2> temat,
+               const ValidationCheckResult &validation,
+               const std::string          &save_filename = "")
 {
     gROOTOBJECTS.push_back(temat);
     auto events_per_time = make_events_per_time_plot(temat);
@@ -269,15 +282,16 @@ void draw_cuts(std::shared_ptr<TH2> temat, const std::vector<std::pair<double, d
     c->cd(1);
     c->SetGrid();
     c->SetCrosshair(1);
+    if (gUSE_MATRIX_ZOOM) { temat->GetYaxis()->SetRangeUser(gMATRIX_ZOOM_LOW, gMATRIX_ZOOM_HIGH); }
     temat->Draw("colz");
 
-    for (const auto &cut : to_be_cut)
+    for (const auto &cut : validation.cut_times)
     {
         std::shared_ptr<TGraph> gr(new TGraph());
         gROOTOBJECTS.push_back(gr);
         gr->SetName(Form("CutGraph_%f_%f", cut.first, cut.second));
-        auto ymin = temat->GetYaxis()->GetXmin();
-        auto ymax = temat->GetYaxis()->GetXmax();
+        auto ymin = gUSE_MATRIX_ZOOM ? gMATRIX_ZOOM_LOW : temat->GetYaxis()->GetXmin();
+        auto ymax = gUSE_MATRIX_ZOOM ? gMATRIX_ZOOM_HIGH : temat->GetYaxis()->GetXmax();
         gr->AddPoint(cut.first, ymin);
         gr->AddPoint(cut.first, ymax);
         gr->AddPoint(cut.second, ymax);
@@ -294,10 +308,13 @@ void draw_cuts(std::shared_ptr<TH2> temat, const std::vector<std::pair<double, d
     c->cd(2);
     gPad->SetGrid();
     gPad->SetCrosshair(1);
+    const double reference_max =
+        std::max({events_per_time->GetMaximum(), validation.average_integral, validation.threshold_integral, 1.0});
+    events_per_time->SetMaximum(reference_max * 1.05);
     events_per_time->Draw("hist");
-    const double ymax = events_per_time->GetMaximum() > 0.0 ? events_per_time->GetMaximum() * 1.05 : 1.0;
+    const double ymax = events_per_time->GetMaximum();
 
-    for (const auto &cut : to_be_cut)
+    for (const auto &cut : validation.cut_times)
     {
         std::shared_ptr<TGraph> gr(new TGraph());
         gROOTOBJECTS.push_back(gr);
@@ -314,6 +331,30 @@ void draw_cuts(std::shared_ptr<TH2> temat, const std::vector<std::pair<double, d
 
         gr->Draw("same F");
     }
+
+    const double xmin = events_per_time->GetXaxis()->GetXmin();
+    const double xmax = events_per_time->GetXaxis()->GetXmax();
+    std::shared_ptr<TLine> average_line(new TLine(xmin, validation.average_integral, xmax, validation.average_integral));
+    gROOTOBJECTS.push_back(average_line);
+    average_line->SetLineColor(kGreen + 2);
+    average_line->SetLineWidth(2);
+    average_line->Draw("same");
+
+    std::shared_ptr<TLine> threshold_line(new TLine(xmin, validation.threshold_integral, xmax, validation.threshold_integral));
+    gROOTOBJECTS.push_back(threshold_line);
+    threshold_line->SetLineColor(kRed + 1);
+    threshold_line->SetLineStyle(2);
+    threshold_line->SetLineWidth(2);
+    threshold_line->Draw("same");
+
+    std::shared_ptr<TLegend> legend(new TLegend(0.65, 0.72, 0.92, 0.90));
+    gROOTOBJECTS.push_back(legend);
+    legend->SetBorderSize(0);
+    legend->SetFillStyle(0);
+    legend->AddEntry(events_per_time.get(), "Events per time bin", "l");
+    legend->AddEntry(average_line.get(), Form("Average = %.1f", validation.average_integral), "l");
+    legend->AddEntry(threshold_line.get(), Form("Threshold = %.1f", validation.threshold_integral), "l");
+    legend->Draw("same");
 
     c->Update();
 
@@ -374,9 +415,9 @@ double calculate_cut_padding(const std::vector<std::pair<double, double>> &cut_t
 /// @param temat
 /// @param average_threshold
 /// @return
-std::vector<std::pair<double, double>> getMissingValidation(const std::shared_ptr<TH2> temat, const double average_threshold = 0.7)
+ValidationCheckResult getMissingValidation(const std::shared_ptr<TH2> temat, const double average_threshold = 0.7)
 {
-    assert(average_threshold > 0.0 && average_threshold < 1.);
+    assert(average_threshold > 0.0 && average_threshold <= 2.0);
 
     const int nbinsx = temat->GetXaxis()->GetNbins();
     const int nbinsy = temat->GetYaxis()->GetNbins();
@@ -392,16 +433,16 @@ std::vector<std::pair<double, double>> getMissingValidation(const std::shared_pt
         integrals.emplace_back(temat->Integral(binx, binx, 1, nbinsy));
     }
 
-    double threshold_integral{0.};
+    ValidationCheckResult result;
     {
         auto tmp = integrals;
         std::sort(tmp.begin(), tmp.end());
         tmp.erase(std::remove(tmp.begin(), tmp.end(), 0), tmp.end());
 
         // average
-        double avg_integral = std::accumulate(tmp.begin(), tmp.end(), 0.0) / static_cast<double>(tmp.size());
+        result.average_integral = std::accumulate(tmp.begin(), tmp.end(), 0.0) / static_cast<double>(tmp.size());
         // double median_integral = tmp[tmp.size() / 2];
-        threshold_integral = avg_integral * average_threshold;
+        result.threshold_integral = result.average_integral * average_threshold;
     }
 
     TGraph gr(static_cast<int>(integrals.size()), times.data(), integrals.data());
@@ -410,31 +451,30 @@ std::vector<std::pair<double, double>> getMissingValidation(const std::shared_pt
     gr.GetXaxis()->SetTitle("Time [s]");
     gr.GetYaxis()->SetTitle("Integral [counts]");
 
-    std::vector<std::pair<double, double>> to_be_cut;
     for (size_t i = 0; i < integrals.size(); i++)
     {
-        if (integrals[i] < threshold_integral)
+        if (integrals[i] < result.threshold_integral)
         {
             int time_bin = temat->GetXaxis()->FindBin(times[i]);
-            if (to_be_cut.size() == 0)
+            if (result.cut_times.size() == 0)
             {
-                to_be_cut.emplace_back(temat->GetXaxis()->GetBinLowEdge(time_bin), temat->GetXaxis()->GetBinUpEdge(time_bin));
+                result.cut_times.emplace_back(temat->GetXaxis()->GetBinLowEdge(time_bin), temat->GetXaxis()->GetBinUpEdge(time_bin));
                 continue;
             }
-            if (to_be_cut.back().second == temat->GetXaxis()->GetBinLowEdge(time_bin))
+            if (result.cut_times.back().second == temat->GetXaxis()->GetBinLowEdge(time_bin))
             {
                 // extend the last interval
-                to_be_cut.back().second = temat->GetXaxis()->GetBinUpEdge(time_bin);
+                result.cut_times.back().second = temat->GetXaxis()->GetBinUpEdge(time_bin);
             }
             else
             {
                 // add a new interval
-                to_be_cut.emplace_back(temat->GetXaxis()->GetBinLowEdge(time_bin), temat->GetXaxis()->GetBinUpEdge(time_bin));
+                result.cut_times.emplace_back(temat->GetXaxis()->GetBinLowEdge(time_bin), temat->GetXaxis()->GetBinUpEdge(time_bin));
             }
         }
     }
 
-    return to_be_cut;
+    return result;
 }
 
 void print_help()
@@ -450,6 +490,7 @@ void print_help()
               << "  --nodraw                 Do not draw missing-validation cut windows\n"
               << "  --save [filename]        Save each validation canvas to a ROOT file. If filename is omitted, use "
                  "vCheck_runXXXX_crysYYY.root\n"
+              << "  --zoom <emin> <emax>     Zoom the matrix Y axis to the specified energy range\n"
               << "  --printdead              If validation holes are found, print their duration in seconds starting from first non-zero bin\n"
               << "  --modify-conf            If holes are found, put zero gain in overlapping "
                  "TimeEvoCC.conf bins\n"
@@ -531,6 +572,20 @@ void parse_args(int argc, char **argv)
             gSAVE_RESULT = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') { gSAVE_FILENAME = argv[++i]; }
         }
+        else if (arg == "--zoom")
+        {
+            if (i + 2 < argc)
+            {
+                gMATRIX_ZOOM_LOW  = std::stod(argv[++i]);
+                gMATRIX_ZOOM_HIGH = std::stod(argv[++i]);
+                if (!(gMATRIX_ZOOM_LOW < gMATRIX_ZOOM_HIGH)) { throw std::invalid_argument("--zoom requires emin < emax"); }
+                gUSE_MATRIX_ZOOM = true;
+            }
+            else
+            {
+                throw std::invalid_argument("--zoom must be followed by emin and emax");
+            }
+        }
         else if (arg == "--modify-conf") { gMODIFY_TIMEEVO_CONF = true; }
         else if (arg == "--printdead") { gPRINTDEAD = true; }
 
@@ -560,6 +615,7 @@ void parse_args(int argc, char **argv)
     std::cout << "Draw cuts:             " << std::boolalpha << gDRAW_CUTS << std::endl;
     std::cout << "Save result:           " << std::boolalpha << gSAVE_RESULT << std::endl;
     if (gSAVE_RESULT && !gSAVE_FILENAME.empty()) { std::cout << "Save filename:         " << gSAVE_FILENAME << std::endl; }
+    if (gUSE_MATRIX_ZOOM) { std::cout << "Matrix Y zoom:         " << gMATRIX_ZOOM_LOW << " " << gMATRIX_ZOOM_HIGH << std::endl; }
     std::cout << "Modify TimeEvo conf:   " << std::boolalpha << gMODIFY_TIMEEVO_CONF << std::endl;
     std::cout << "-----------------------------------------------------------" << std::endl;
 }
@@ -626,15 +682,15 @@ int main(int argc, char **argv)
                 std::cerr << "Error! could not open/find the " << matrixname << " matrix" << std::endl;
                 continue;
             }
-            auto cut_times = getMissingValidation(TEMAT_original, gTHRESHOLD);
+            auto validation = getMissingValidation(TEMAT_original, gTHRESHOLD);
 
-            if (cut_times.size() > gMINIMUM_NUMBER_OF_HOLES_TO_IGNORE)
+            if (validation.cut_times.size() > gMINIMUM_NUMBER_OF_HOLES_TO_IGNORE)
             {
-                cut_times_in_run.emplace_back(cut_times);
+                cut_times_in_run.emplace_back(validation.cut_times);
 
-                double missing_duration   = calculate_total_duration(cut_times);
+                double missing_duration   = calculate_total_duration(validation.cut_times);
                 double total_run_duration = calculate_run_duration(TEMAT_original);
-                double padding_duration   = calculate_cut_padding(cut_times);
+                double padding_duration   = calculate_cut_padding(validation.cut_times);
                 missing_duration -= padding_duration;
                 total_run_duration -= padding_duration;
 
@@ -646,11 +702,12 @@ int main(int argc, char **argv)
 
                 std::cout << "Lost due to validation: run " << run << " cry " << crystal << " " << std::fixed << std::setprecision(2)
                           << missing_duration << "s out of total run duration " << total_run_duration << "s " << percentage << "%" << std::endl;
-                std::cout << "Found validation " << cut_times.size() << " holes for run " << run << " crystal " << crystal << ": " << std::endl;
+                std::cout << "Found validation " << validation.cut_times.size() << " holes for run " << run << " crystal " << crystal << ": "
+                          << std::endl;
             }
             if (gDRAW_CUTS || gSAVE_RESULT)
             {
-                draw_cuts(TEMAT_original, cut_times, gSAVE_RESULT ? get_validation_output_filename(run, crystal) : "");
+                draw_cuts(TEMAT_original, validation, gSAVE_RESULT ? get_validation_output_filename(run, crystal) : "");
             }
             ts_offset = std::min(ts_offset, get_first_timestamp(TEMAT_original));
         }
