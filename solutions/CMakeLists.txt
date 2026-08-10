@@ -21,3 +21,7 @@ endif()
 if(BUILD_SOLUTION_SIMPLE_EXAMPLE)
     add_subdirectory(simple_example)
 endif()
+
+if(BUILD_SOLUTION_IPSAS)
+    add_subdirectory(IPSAS)
+endif()

@@ -67,6 +67,7 @@ option(BUILD_SOLUTION_IMP "Build IMP solution applications" ON)
 option(BUILD_SOLUTION_PRISMA "Build PRISMA solution applications" ON)
 option(BUILD_SOLUTION_OSCAR "Build OSCAR solution applications" ON)
 option(BUILD_SOLUTION_SIMPLE_EXAMPLE "Build simple example solution application" ON)
+option(BUILD_SOLUTION_IPSAS "Build IPSAS solution application" ON)
 option(INSTALL_EXAMPLES "Install example and solution applications" ON)
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 
