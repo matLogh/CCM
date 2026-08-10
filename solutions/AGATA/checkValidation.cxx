@@ -36,6 +36,7 @@ std::string gSAVE_FILENAME       = "";
 bool        gUSE_MATRIX_ZOOM     = false;
 double      gMATRIX_ZOOM_LOW     = 0.0;
 double      gMATRIX_ZOOM_HIGH    = 0.0;
+std::vector<std::pair<int, int>> gARTIFICIAL_DEAD_BIN_INTERVALS;
 
 std::vector<std::shared_ptr<TObject>> gROOTOBJECTS;
 
@@ -470,6 +471,29 @@ ValidationCheckResult getMissingValidation(const std::shared_ptr<TH2> temat, con
     return result;
 }
 
+std::vector<std::pair<double, double>> get_artificial_dead_intervals(const std::shared_ptr<TH2> temat)
+{
+    std::vector<std::pair<double, double>> intervals;
+    if (gARTIFICIAL_DEAD_BIN_INTERVALS.empty()) { return intervals; }
+    if (!temat) { throw std::runtime_error("Cannot convert artificial dead intervals from a null matrix"); }
+
+    const int nbinsx = temat->GetXaxis()->GetNbins();
+    intervals.reserve(gARTIFICIAL_DEAD_BIN_INTERVALS.size());
+    for (const auto &[start_bin, end_bin] : gARTIFICIAL_DEAD_BIN_INTERVALS)
+    {
+        if (start_bin < 1 || end_bin < 1 || start_bin > end_bin || end_bin > nbinsx)
+        {
+            std::ostringstream err;
+            err << "Artificial dead bin interval [" << start_bin << ", " << end_bin << "] is outside matrix x-bin range [1, " << nbinsx << "]";
+            throw std::runtime_error(err.str());
+        }
+
+        intervals.emplace_back(temat->GetXaxis()->GetBinLowEdge(start_bin), temat->GetXaxis()->GetBinUpEdge(end_bin));
+    }
+
+    return intervals;
+}
+
 void print_help()
 {
     std::cout << "Usage: getMissingValidation [options]\n"
@@ -484,8 +508,9 @@ void print_help()
               << "  --save [filename]        Save each validation canvas to a ROOT file. If filename is omitted, use "
                  "vCheck_runXXXX_crysYYY.root\n"
               << "  --zoom <emin> <emax>     Zoom the matrix Y axis to the specified energy range\n"
+              << "  --dead-bins <start> <end> Add an artificial dead interval using inclusive matrix x-bin numbers. Can be repeated\n"
               << "  --printdead              If validation holes are found, print their duration in seconds starting from first non-zero bin\n"
-              << "  --modify-conf            If holes are found, put zero gain in overlapping "
+              << "  --modify-conf            If holes are found, put gain -1 in overlapping "
                  "TimeEvoCC.conf bins\n"
               << "  --help, -h               Show this help message\n";
 
@@ -579,6 +604,23 @@ void parse_args(int argc, char **argv)
                 throw std::invalid_argument("--zoom must be followed by emin and emax");
             }
         }
+        else if (arg == "--dead-bins" || arg == "--dead-bin-interval" || arg == "--artificial-dead-bins")
+        {
+            if (i + 2 < argc)
+            {
+                const int start_bin = std::stoi(argv[++i]);
+                const int end_bin   = std::stoi(argv[++i]);
+                if (start_bin < 1 || end_bin < 1 || start_bin > end_bin)
+                {
+                    throw std::invalid_argument(arg + " requires positive inclusive x-bin numbers with start <= end");
+                }
+                gARTIFICIAL_DEAD_BIN_INTERVALS.emplace_back(start_bin, end_bin);
+            }
+            else
+            {
+                throw std::invalid_argument(arg + " must be followed by start and end bin");
+            }
+        }
         else if (arg == "--modify-conf") { gMODIFY_TIMEEVO_CONF = true; }
         else if (arg == "--printdead") { gPRINTDEAD = true; }
 
@@ -609,6 +651,12 @@ void parse_args(int argc, char **argv)
     std::cout << "Save result:           " << std::boolalpha << gSAVE_RESULT << std::endl;
     if (gSAVE_RESULT && !gSAVE_FILENAME.empty()) { std::cout << "Save filename:         " << gSAVE_FILENAME << std::endl; }
     if (gUSE_MATRIX_ZOOM) { std::cout << "Matrix Y zoom:         " << gMATRIX_ZOOM_LOW << " " << gMATRIX_ZOOM_HIGH << std::endl; }
+    if (!gARTIFICIAL_DEAD_BIN_INTERVALS.empty())
+    {
+        std::cout << "Artificial dead bins:  ";
+        for (const auto &[start_bin, end_bin] : gARTIFICIAL_DEAD_BIN_INTERVALS) { std::cout << "[" << start_bin << ", " << end_bin << "] "; }
+        std::cout << std::endl;
+    }
     std::cout << "Modify TimeEvo conf:   " << std::boolalpha << gMODIFY_TIMEEVO_CONF << std::endl;
     std::cout << "-----------------------------------------------------------" << std::endl;
 }
@@ -675,6 +723,13 @@ int main(int argc, char **argv)
                 continue;
             }
             auto validation = getMissingValidation(TEMAT_original, gTHRESHOLD);
+            auto artificial_dead_intervals = get_artificial_dead_intervals(TEMAT_original);
+            if (!artificial_dead_intervals.empty())
+            {
+                validation.cut_times = mergeIntervals({validation.cut_times, artificial_dead_intervals});
+                std::cout << "Added " << artificial_dead_intervals.size() << " artificial dead interval(s) for run " << run << " crystal "
+                          << crystal << " from matrix x bins" << std::endl;
+            }
 
             // if (validation.cut_times.size() > gMINIMUM_NUMBER_OF_HOLES_TO_IGNORE)
             if (!validation.cut_times.empty())
