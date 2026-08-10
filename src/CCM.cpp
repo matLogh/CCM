@@ -34,6 +34,7 @@ list of throw exceptions:
 #pragma GCC diagnostic ignored "-Wdouble-promotion"
 #include <TFile.h>
 #include <TGraphSmooth.h>
+#include <TH2D.h>
 #include <TTree.h>
 #pragma GCC diagnostic pop
 
@@ -44,6 +45,35 @@ list of throw exceptions:
 std::mutex        TEC::CCM::fMtx_ROOTfit;
 const std::string TEC::CCM::EMPTY_FUNCTION_NAME{"EMPTY_FUNCTION"};
 const std::string TEC::CCM::REMOVE_FUNCTION_NAME{"REMOVE_FUNCTION"};
+
+namespace
+{
+std::vector<double> GetAxisEdges(const TAxis *axis)
+{
+    std::vector<double> edges(static_cast<size_t>(axis->GetNbins()) + 1);
+    for (int bin = 1; bin <= axis->GetNbins(); ++bin) { edges[static_cast<size_t>(bin) - 1] = axis->GetBinLowEdge(bin); }
+    edges.back() = axis->GetBinUpEdge(axis->GetNbins());
+    return edges;
+}
+
+std::shared_ptr<TH2D> CreateDoublePrecisionMatrixLike(const TH2 *input_mat, const std::string &name, const std::string &title)
+{
+    const auto x_edges = GetAxisEdges(input_mat->GetXaxis());
+    const auto y_edges = GetAxisEdges(input_mat->GetYaxis());
+
+    auto fixed_mat = std::make_shared<TH2D>(name.c_str(),
+                                            title.c_str(),
+                                            input_mat->GetXaxis()->GetNbins(),
+                                            x_edges.data(),
+                                            input_mat->GetYaxis()->GetNbins(),
+                                            y_edges.data());
+    fixed_mat->SetDirectory(nullptr);
+    fixed_mat->GetXaxis()->ImportAttributes(input_mat->GetXaxis());
+    fixed_mat->GetYaxis()->ImportAttributes(input_mat->GetYaxis());
+    fixed_mat->GetZaxis()->ImportAttributes(input_mat->GetZaxis());
+    return fixed_mat;
+}
+} // namespace
 
 TEC::CCM::CCM(std::shared_ptr<TH2>                matrix,
               const std::vector<RegionOfInterest> _ROIs,
@@ -633,13 +663,7 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix()
 
     if (!fFitDone) { this->CalculateCorrectionFits(1); }
 
-    auto clone = dynamic_cast<TH2 *>(V.TEMAT->Clone(Form("%s_corrected", V.TEMAT->GetName())));
-    if (!clone) { throw std::runtime_error("Error: Cloning TEMAT failed!"); }
-
-    fFixedTEMAT = std::shared_ptr<TH2>(clone);
-    fFixedTEMAT->Reset();
-    fFixedTEMAT->SetName(Form("%s_fixed", V.TEMAT->GetName()));
-    fFixedTEMAT->SetTitle(Form("%s_fixed", V.TEMAT->GetTitle()));
+    fFixedTEMAT = CreateDoublePrecisionMatrixLike(V.TEMAT.get(), Form("%s_fixed", V.TEMAT->GetName()), Form("%s_fixed", V.TEMAT->GetTitle()));
 
     Double_t bin_cont;
     Double_t total_ratio, en_low_edge, en_up_edge, new_en_low_edge, new_en_up_edge;
@@ -685,6 +709,7 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix()
             en_up_edge      = axis->GetBinUpEdge(en_bin);
             new_en_low_edge = fcn->Eval(en_low_edge);
             new_en_up_edge  = fcn->Eval(en_up_edge);
+            if (new_en_up_edge < new_en_low_edge) { std::swap(new_en_low_edge, new_en_up_edge); }
 
             // the new_en will not cover range that might be multiple bins in
             // width, and there is also a difference in coverage - new low edge
@@ -735,15 +760,7 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix(const TH2 *input_mat)
 {
     if (!fFitDone) { fCorrectionFits.clear(); }
     if (input_mat == nullptr) { throw std::runtime_error("TEC::CCM::FixMatrix: Error! Input matrix is nullptr!"); }
-    auto clone = dynamic_cast<TH2 *>(input_mat->Clone(Form("%s_corrected", V.TEMAT->GetName())));
-    if (!clone) { throw std::runtime_error("Error: Cloning TEMAT failed!"); }
-
-    std::shared_ptr<TH2> fixed_mat = std::shared_ptr<TH2>(clone);
-    fixed_mat->SetName(Form("%s_fixed", input_mat->GetName()));
-    fixed_mat->SetTitle(Form("%s_fixed", input_mat->GetTitle()));
-
-    fixed_mat->SetDirectory(0);
-    fixed_mat->Reset();
+    std::shared_ptr<TH2> fixed_mat = CreateDoublePrecisionMatrixLike(input_mat, Form("%s_fixed", input_mat->GetName()), Form("%s_fixed", input_mat->GetTitle()));
 
     Double_t bin_cont;
     Double_t total_ratio, en_low_edge, en_up_edge, new_en_low_edge, new_en_up_edge;
@@ -794,6 +811,7 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix(const TH2 *input_mat)
             en_up_edge      = axis->GetBinUpEdge(en_bin);
             new_en_low_edge = fcn->Eval(en_low_edge);
             new_en_up_edge  = fcn->Eval(en_up_edge);
+            if (new_en_up_edge < new_en_low_edge) { std::swap(new_en_low_edge, new_en_up_edge); }
 
             // the new_en will not cover range that might be multiple bins in
             // width, and there is also a difference in coverage - new low edge
