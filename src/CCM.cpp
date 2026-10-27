@@ -61,12 +61,8 @@ std::shared_ptr<TH2D> CreateDoublePrecisionMatrixLike(const TH2 *input_mat, cons
     const auto x_edges = GetAxisEdges(input_mat->GetXaxis());
     const auto y_edges = GetAxisEdges(input_mat->GetYaxis());
 
-    auto fixed_mat = std::make_shared<TH2D>(name.c_str(),
-                                            title.c_str(),
-                                            input_mat->GetXaxis()->GetNbins(),
-                                            x_edges.data(),
-                                            input_mat->GetYaxis()->GetNbins(),
-                                            y_edges.data());
+    auto fixed_mat = std::make_shared<TH2D>(name.c_str(), title.c_str(), input_mat->GetXaxis()->GetNbins(), x_edges.data(),
+                                            input_mat->GetYaxis()->GetNbins(), y_edges.data());
     fixed_mat->SetDirectory(nullptr);
     fixed_mat->GetXaxis()->ImportAttributes(input_mat->GetXaxis());
     fixed_mat->GetYaxis()->ImportAttributes(input_mat->GetYaxis());
@@ -647,7 +643,8 @@ void TEC::CCM::SaveFitTable(const std::string &data_filename, const std::string 
 
     for (size_t time_index = 0; time_index < V.time_bins; time_index++)
     {
-        auto        time = this->GetMatrixTime(time_index - 1);
+
+        auto        time = this->GetMatrixTime(time_index > 0 ? time_index - 1 : 0);
         const auto &fit  = fCorrectionFits[time];
         // this->GetCorrectionFit(V.TEMAT->GetXaxis()->GetBinCenter(time_index
         // + 1));
@@ -760,7 +757,8 @@ std::shared_ptr<TH2> TEC::CCM::FixMatrix(const TH2 *input_mat)
 {
     if (!fFitDone) { fCorrectionFits.clear(); }
     if (input_mat == nullptr) { throw std::runtime_error("TEC::CCM::FixMatrix: Error! Input matrix is nullptr!"); }
-    std::shared_ptr<TH2> fixed_mat = CreateDoublePrecisionMatrixLike(input_mat, Form("%s_fixed", input_mat->GetName()), Form("%s_fixed", input_mat->GetTitle()));
+    std::shared_ptr<TH2> fixed_mat =
+        CreateDoublePrecisionMatrixLike(input_mat, Form("%s_fixed", input_mat->GetName()), Form("%s_fixed", input_mat->GetTitle()));
 
     Double_t bin_cont;
     Double_t total_ratio, en_low_edge, en_up_edge, new_en_low_edge, new_en_up_edge;
@@ -1126,7 +1124,7 @@ void TEC::CCM::UseMaxDPResult()
 
 void TEC::CCM::SetReferenceVector(const unsigned int ROI_index, const std::vector<float> &own_reference_vector)
 {
-    if (ROI_index > V.ROIs.size()) { throw std::runtime_error("ROI index out of bounds"); }
+    if (ROI_index >= V.ROIs.size()) { throw std::runtime_error("ROI index out of bounds"); }
 
     int vsize = V.ROIs[ROI_index].bin_window_high - V.ROIs[ROI_index].bin_window_low;
 
@@ -1189,10 +1187,11 @@ std::unique_ptr<TGraph> TEC::CCM::GetDotProductGraph(const size_t roi_index, con
 
 std::unique_ptr<TGraph> TEC::CCM::GetInterpolationGraph(const size_t ROI_index, const int subdivide, const bool valid_only)
 {
+    if (subdivide < 1) { throw std::runtime_error("Subdivide must be at least 1"); }
     if (ROI_index >= V.ROIs.size()) { throw std::runtime_error("ROI index out of bounds"); }
 
-    auto                   *interpolator = &V.ROIs[ROI_index].interpolator;
-    std::unique_ptr<TGraph> gr           = std::make_unique<TGraph>();
+    auto *interpolator = &V.ROIs[ROI_index].interpolator;
+    if (interpolator->GetNPoints() == 0) { throw std::runtime_error("Interpolator has no points, cannot create interpolation graph"); }
 
     const double x_start = interpolator->GetFirstX();
     const double x_end   = interpolator->GetLastX();
@@ -1200,7 +1199,8 @@ std::unique_ptr<TGraph> TEC::CCM::GetInterpolationGraph(const size_t ROI_index, 
     // double x_start = interpolator->GetFirstX() - step * subdivide / 2.;
     // double x_end   = interpolator->GetLastX() + step * subdivide / 2.;
 
-    double y;
+    std::unique_ptr<TGraph> gr = std::make_unique<TGraph>();
+    double                  y;
     for (double x = x_start; x < x_end; x += step)
     {
         if (valid_only && !interpolator->IsValueValid(x)) continue;

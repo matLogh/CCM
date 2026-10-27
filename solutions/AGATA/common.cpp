@@ -204,7 +204,12 @@ std::string get_conffilename(const std::string &dir, const int run, const std::s
 {
     std::string conffile = dir;
     if (!conffile.empty() && conffile.back() != '/') { conffile += "/"; }
-    conffile += "run_" + fourCharInt(run) + "/Conf/" + crystal + "/TimeEvoCC.conf";
+    if (run == -1) conffile += "ccm_output";
+    else
+        conffile += "run_" + fourCharInt(run);
+    if (crystal.empty()) conffile += "/TimeEvoCC.conf";
+    else
+        conffile += "/Conf/" + crystal + "/TimeEvoCC.conf";
     return conffile;
 }
 

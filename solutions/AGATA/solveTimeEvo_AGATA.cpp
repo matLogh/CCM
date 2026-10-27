@@ -526,6 +526,10 @@ void set_reference_vector(const int ref_run)
     {
         throw std::runtime_error("Error! could not open/find the old/REFERENCE ROOT file " + reference_root_file + " file");
     }
+    if (matfile->Get(gMATRIX_NAME.c_str()) == nullptr)
+    {
+        throw std::runtime_error("Error! could not find the matrix " + gMATRIX_NAME + " in the REFERENCE ROOT file " + reference_root_file);
+    }
     std::shared_ptr<TH2> TEMAT_original((TH2 *)matfile->Get(gMATRIX_NAME.c_str()));
 
     std::vector<RegionOfInterest> ROIs;
@@ -770,8 +774,15 @@ int main(int argc, char **argv)
 
     adjust_peak_energy(TEMAT_original, gROIarr);
     std::cout << "Adjusted ROI energy to: " << gROIarr.at(0) << std::endl;
-    if (gFIT_PEAK.size() == 3) { adjust_peak_energy(TEMAT_original, gFIT_PEAK); }
-    std::cout << "Adjusted cost peak energy to: " << gFIT_PEAK.at(0) << std::endl;
+    if (gFIT_PEAK.size() == 3)
+    {
+        adjust_peak_energy(TEMAT_original, gFIT_PEAK);
+        std::cout << "Adjusted cost peak energy to: " << gFIT_PEAK.at(0) << std::endl;
+    }
+    else
+    {
+        std::cout << "Cost peak energy is not defined, skipping adjustment." << std::endl;
+    }
 
     if (gUSE_SUPER_SETTINGS)
     {
