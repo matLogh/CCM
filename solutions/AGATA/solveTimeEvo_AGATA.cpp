@@ -1,10 +1,12 @@
 // #include <array>
+#include <atomic>
 #include <chrono> //measure time
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Root
@@ -17,6 +19,7 @@
 #include <TH1D.h>
 #include <TH2D.h>
 #include <TROOT.h>
+#include <TError.h>
 #include <TTree.h>
 
 #include "CCM.h"
@@ -65,6 +68,7 @@ std::vector<float> gROIarr;
 std::vector<float> gREFERENCE_TIME;
 std::vector<float> gFIT_PEAK;
 bool               gUSE_SUPER_SETTINGS{false};
+bool               gVERBOSE_GSL{false};
 std::string        gROOTFILE      = "";
 std::string        gDIR           = "timeEvo";
 std::string        gMATRIX_NAME   = "";
@@ -73,6 +77,121 @@ std::vector<float> gREFERENCE_VECTOR;
 std::vector<int>   gCHAIN_RUNS;
 
 const double MINUTES_TO_TIMESTAMPS = 6.0e9;
+
+namespace
+{
+std::atomic<std::uint64_t> gGSLMessageCount{0};
+std::atomic<std::uint64_t> gSuppressedGSLMessageCount{0};
+ErrorHandlerFunc_t         gPreviousROOTErrorHandler{nullptr};
+
+bool is_gsl_message(const char *location)
+{
+    if (!location) { return false; }
+    const std::string_view where(location);
+    return where == "GSLError" || where.find("GSLInterpolator") != std::string_view::npos;
+}
+
+void numerical_error_handler(int level, Bool_t abort, const char *location, const char *message)
+{
+    auto forward_message = [&](int forwarded_level, Bool_t forwarded_abort, const char *forwarded_location, const char *forwarded_message) {
+        if (gPreviousROOTErrorHandler) { gPreviousROOTErrorHandler(forwarded_level, forwarded_abort, forwarded_location, forwarded_message); }
+        else
+        {
+            DefaultErrorHandler(forwarded_level, forwarded_abort, forwarded_location, forwarded_message);
+        }
+    };
+
+    if (!is_gsl_message(location) || abort || level >= kFatal)
+    {
+        forward_message(level, abort, location, message);
+        return;
+    }
+
+    const std::uint64_t message_number = gGSLMessageCount.fetch_add(1) + 1;
+    if (gVERBOSE_GSL || message_number <= 3)
+    {
+        forward_message(level, abort, location, message);
+        if (!gVERBOSE_GSL && message_number == 3)
+        {
+            forward_message(kWarning,
+                            kFALSE,
+                            "CCM numerical diagnostics",
+                            "Further GSL messages will be suppressed and summarized. Use --verbose-gsl to display all of them.");
+        }
+    }
+    else
+    {
+        gSuppressedGSLMessageCount.fetch_add(1);
+    }
+}
+
+class NumericalDiagnosticsReporter
+{
+  public:
+    NumericalDiagnosticsReporter()
+    {
+        CCMInterpolator::ResetDiagnostics();
+        gGSLMessageCount.store(0);
+        gSuppressedGSLMessageCount.store(0);
+        gPreviousROOTErrorHandler = SetErrorHandler(numerical_error_handler);
+    }
+
+    ~NumericalDiagnosticsReporter()
+    {
+        SetErrorHandler(gPreviousROOTErrorHandler);
+        gPreviousROOTErrorHandler = nullptr;
+        this->PrintSummary();
+    }
+
+    NumericalDiagnosticsReporter(const NumericalDiagnosticsReporter &)            = delete;
+    NumericalDiagnosticsReporter &operator=(const NumericalDiagnosticsReporter &) = delete;
+
+  private:
+    void PrintSummary() const
+    {
+        const auto diagnostics       = CCMInterpolator::GetDiagnostics();
+        const auto gsl_messages      = gGSLMessageCount.load();
+        const auto suppressed_errors = gSuppressedGSLMessageCount.load();
+        if (!diagnostics.HasProblems() && gsl_messages == 0) { return; }
+
+        std::cerr << "\nNumerical diagnostics summary:" << std::endl;
+        if (gsl_messages != 0)
+        {
+            std::cerr << "  GSL messages: " << gsl_messages;
+            if (gVERBOSE_GSL) { std::cerr << " (all displayed)"; }
+            else
+            {
+                std::cerr << " (" << suppressed_errors << " suppressed)";
+            }
+            std::cerr << std::endl;
+        }
+        if (diagnostics.initialization_failures != 0)
+        {
+            std::cerr << "  Interpolator initialization failures: " << diagnostics.initialization_failures << std::endl;
+        }
+        if (diagnostics.non_finite_results != 0)
+        {
+            std::cerr << "  Non-finite interpolation results: " << diagnostics.non_finite_results << std::endl;
+        }
+        if (diagnostics.linear_fallbacks != 0)
+        {
+            std::cerr << "  Evaluations using linear fallback: " << diagnostics.linear_fallbacks << std::endl;
+        }
+        if (diagnostics.nearest_fallbacks != 0)
+        {
+            std::cerr << "  Evaluations using nearest-value fallback: " << diagnostics.nearest_fallbacks << std::endl;
+        }
+        if (diagnostics.out_of_range_evaluations != 0)
+        {
+            std::cerr << "  Out-of-range interpolation evaluations: " << diagnostics.out_of_range_evaluations << std::endl;
+        }
+        if (diagnostics.HasProblems())
+        {
+            std::cerr << "Safe fallback values were used where interpolation was not possible." << std::endl;
+        }
+    }
+};
+} // namespace
 
 void adjust_peak_energy(std::shared_ptr<TH2> TEMAT, std::vector<float> &peak_array)
 
@@ -504,6 +623,7 @@ void print_help()
     std::cout << "  --matrix <1>               Specify the matrix name \n";
     std::cout << "  --super_settings           Run corrections with hardcoded "
                  "parameters \n";
+    std::cout << "  --verbose-gsl              Display every ROOT/GSL numerical diagnostic instead of a throttled summary\n";
     // std::cout << "  --reference_other_run <1>  If you want to use the
     // reference/sample
     // "
@@ -653,6 +773,7 @@ void parse_args(int argc, char **argv)
             gREFERENCE_TIME = parse_space_separated_floats(i, argc, argv, 2); // Expecting 2 floats
         }
         else if (arg == "--super_settings") { gUSE_SUPER_SETTINGS = true; }
+        else if (arg == "--verbose-gsl") { gVERBOSE_GSL = true; }
         else
         {
             print_help();
@@ -724,6 +845,7 @@ void parse_args(int argc, char **argv)
     for (const auto &val : gFIT_PEAK) { std::cout << val << " "; }
     std::cout << std::endl;
     std::cout << "  Use Super Settings: " << std::boolalpha << gUSE_SUPER_SETTINGS << std::endl;
+    std::cout << "  Verbose GSL Diagnostics: " << std::boolalpha << gVERBOSE_GSL << std::endl;
     auto conffile = get_conffilename(gDIR, gRUN, gCRYSTAL);
 
     std::cout << "Output configuration file will be saved to: " << conffile << std::endl;
@@ -762,6 +884,7 @@ void run_chained_runs(const ccm_settings &optimal_settings)
 int main(int argc, char **argv)
 {
     parse_args(argc, argv);
+    NumericalDiagnosticsReporter numerical_diagnostics;
 
     // this makes it slower!!!
     // ROOT::EnableImplicitMT();

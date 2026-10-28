@@ -1,5 +1,17 @@
 #include "CCMInterpolator.h"
 
+#include <atomic>
+#include <cmath>
+
+namespace
+{
+std::atomic<std::uint64_t> gInitializationFailures{0};
+std::atomic<std::uint64_t> gNonFiniteResults{0};
+std::atomic<std::uint64_t> gLinearFallbacks{0};
+std::atomic<std::uint64_t> gNearestFallbacks{0};
+std::atomic<std::uint64_t> gOutOfRangeEvaluations{0};
+} // namespace
+
 TEC::CCMInterpolator::CCMInterpolator() { this->SetType("akima", true); }
 
 TEC::CCMInterpolator::CCMInterpolator(const std::string &type, bool valid_only) { this->SetType(type, valid_only); }
@@ -22,21 +34,17 @@ void TEC::CCMInterpolator::SetType(const ROOT::Math::Interpolation::Type type, c
 
 TEC::CCMInterpolator::CCMInterpolator(const TEC::CCMInterpolator &other)
 {
-    this->fValidOnly               = other.fValidOnly;
-    this->fEnableInterpolation     = other.fEnableInterpolation;
-    this->fInterpolatorInitialized = other.fInterpolatorInitialized;
-    this->fType                    = other.fType;
+    this->fValidOnly           = other.fValidOnly;
+    this->fEnableInterpolation = other.fEnableInterpolation;
+    this->fType                = other.fType;
 
     this->fX     = other.fX;
     this->fY     = other.fY;
     this->fValid = other.fValid;
 
-    // making copy of interpolator is not public method
-    if (other.fInterpolator) { this->fInterpolator = std::make_unique<ROOT::Math::Interpolator>(this->fX, this->fY, this->fType); }
-    else
-    {
-        this->fInterpolator = nullptr;
-    }
+    // ROOT::Math::Interpolator cannot be copied. Rebuild it lazily if it is needed.
+    this->fInterpolator            = nullptr;
+    this->fInterpolatorInitialized = false;
 }
 
 TEC::CCMInterpolator &TEC::CCMInterpolator::operator=(const TEC::CCMInterpolator &other)
@@ -44,21 +52,17 @@ TEC::CCMInterpolator &TEC::CCMInterpolator::operator=(const TEC::CCMInterpolator
     if (this != &other)
     {
 
-        this->fValidOnly               = other.fValidOnly;
-        this->fEnableInterpolation     = other.fEnableInterpolation;
-        this->fInterpolatorInitialized = other.fInterpolatorInitialized;
-        this->fType                    = other.fType;
+        this->fValidOnly           = other.fValidOnly;
+        this->fEnableInterpolation = other.fEnableInterpolation;
+        this->fType                = other.fType;
 
         this->fX     = other.fX;
         this->fY     = other.fY;
         this->fValid = other.fValid;
 
-        // making copy of interpolator is not public method
-        if (other.fInterpolator) { this->fInterpolator = std::make_unique<ROOT::Math::Interpolator>(this->fX, this->fY, this->fType); }
-        else
-        {
-            this->fInterpolator = nullptr;
-        }
+        // ROOT::Math::Interpolator cannot be copied. Rebuild it lazily if it is needed.
+        this->fInterpolator            = nullptr;
+        this->fInterpolatorInitialized = false;
     }
     return *this;
 }
@@ -99,6 +103,8 @@ void TEC::CCMInterpolator::ClearPoints()
     fX.clear();
     fY.clear();
     fValid.clear();
+    fInterpolator            = nullptr;
+    fInterpolatorInitialized = false;
 }
 
 void TEC::CCMInterpolator::DisableInterpolation()
@@ -109,9 +115,28 @@ void TEC::CCMInterpolator::DisableInterpolation()
 
 void TEC::CCMInterpolator::EnableInterpolation()
 {
-    fEnableInterpolation = true;
-    fInterpolator        = nullptr;
+    fEnableInterpolation     = true;
+    fInterpolator            = nullptr;
+    fInterpolatorInitialized = false;
 };
+
+TEC::CCMInterpolator::Diagnostics TEC::CCMInterpolator::GetDiagnostics() noexcept
+{
+    return {gInitializationFailures.load(),
+            gNonFiniteResults.load(),
+            gLinearFallbacks.load(),
+            gNearestFallbacks.load(),
+            gOutOfRangeEvaluations.load()};
+}
+
+void TEC::CCMInterpolator::ResetDiagnostics() noexcept
+{
+    gInitializationFailures.store(0);
+    gNonFiniteResults.store(0);
+    gLinearFallbacks.store(0);
+    gNearestFallbacks.store(0);
+    gOutOfRangeEvaluations.store(0);
+}
 
 int TEC::CCMInterpolator::GetIndex(const double x) const
 {
@@ -194,29 +219,116 @@ double TEC::CCMInterpolator::Eval(const double x)
 {
     if (!fEnableInterpolation) return Eval_noInterpolation(x);
 
-    if (!fInterpolator) { fInterpolator = std::make_unique<ROOT::Math::Interpolator>(fX, fY, fType); }
-
     const int _index = this->GetIndex(x);
     // closest value is not valid, interpolation is invalid by default
-    if (_index == -1) { return 0; }
+    if (_index == -1)
+    {
+        ++gOutOfRangeEvaluations;
+        return 0;
+    }
     const uint index = static_cast<uint>(_index);
     // is interpolation possible? If no, get the closest value, if yes get interpolated
     // value
     int valid = this->InterpolationValid(x, _index);
-    if (valid == 0) { return fY[index]; }
-    if (valid == 1) { return fInterpolator->Eval(x); }
+    if (valid == 0)
+    {
+        ++gNearestFallbacks;
+        return fY[index];
+    }
 
-    // return val is 2, if we cannot do selected interpolation, but simple linear
-    // interpolation is possible
-    double diff = x - fX[index];
+    if (valid == 1 && this->InitializeInterpolator())
+    {
+        const double result = fInterpolator->Eval(x);
+        if (std::isfinite(result)) { return result; }
+        ++gNonFiniteResults;
+    }
+
+    bool         used_linear = false;
+    const double fallback    = this->EvalLinearOrNearest(x, index, used_linear);
+    if (used_linear) { ++gLinearFallbacks; }
+    else
+    {
+        ++gNearestFallbacks;
+    }
+    return fallback;
+}
+
+bool TEC::CCMInterpolator::InitializeInterpolator()
+{
+    if (fInterpolator) { return true; }
+    if (fInterpolatorInitialized) { return false; }
+
+    // Mark the attempt even when it fails, otherwise every evaluation would emit the same
+    // low-level GSL error again.
+    fInterpolatorInitialized = true;
+    if (!this->HasValidInterpolationData())
+    {
+        ++gInitializationFailures;
+        return false;
+    }
+
+    auto interpolator = std::make_unique<ROOT::Math::Interpolator>(static_cast<unsigned int>(fX.size()), fType);
+    if (!interpolator->SetData(fX, fY))
+    {
+        ++gInitializationFailures;
+        return false;
+    }
+
+    fInterpolator = std::move(interpolator);
+    return true;
+}
+
+double TEC::CCMInterpolator::EvalLinearOrNearest(const double x, const uint index, bool &used_linear) const
+{
+    used_linear       = false;
+    const double diff = x - fX[index];
     if (diff == 0) { return fY[index]; }
+
+    size_t left  = index;
+    size_t right = index;
     if (diff < 0)
     {
         if (index == 0) { return fY[index]; }
-        return fY[index] + (fY[index] - fY[index - 1]) / (fX[index] - fX[index - 1]) * diff;
+        left  = static_cast<size_t>(index) - 1;
+        right = index;
     }
-    if (index + 1 >= fY.size()) { return fY[index]; }
-    return fY[index] + (fY[index + 1] - fY[index]) / (fX[index + 1] - fX[index]) * diff;
+    else
+    {
+        if (static_cast<size_t>(index) + 1 >= fY.size()) { return fY[index]; }
+        left  = index;
+        right = static_cast<size_t>(index) + 1;
+    }
+
+    const double dx = fX[right] - fX[left];
+    if (!(dx > 0) || !std::isfinite(dx)) { return fY[index]; }
+
+    used_linear = true;
+    return fY[left] + (fY[right] - fY[left]) / dx * (x - fX[left]);
+}
+
+size_t TEC::CCMInterpolator::MinimumRequiredPoints() const noexcept
+{
+    switch (fType)
+    {
+    case ROOT::Math::Interpolation::kLINEAR: return 2;
+    case ROOT::Math::Interpolation::kCSPLINE:
+    case ROOT::Math::Interpolation::kCSPLINE_PERIODIC: return 3;
+    case ROOT::Math::Interpolation::kAKIMA:
+    case ROOT::Math::Interpolation::kAKIMA_PERIODIC: return 5;
+    default: return 2;
+    }
+}
+
+bool TEC::CCMInterpolator::HasValidInterpolationData() const noexcept
+{
+    if (fX.size() != fY.size() || fX.size() < this->MinimumRequiredPoints()) { return false; }
+
+    for (size_t i = 0; i < fX.size(); ++i)
+    {
+        if (!std::isfinite(fX[i]) || !std::isfinite(fY[i])) { return false; }
+        if (i > 0 && !(fX[i] > fX[i - 1])) { return false; }
+    }
+    return true;
 }
 
 void TEC::CCMInterpolator::AddPoint(const double x, const double y, const bool valid)
@@ -242,5 +354,6 @@ void TEC::CCMInterpolator::AddPoint(const double x, const double y, const bool v
         fY.push_back(y);
         fValid.push_back(!fValidOnly || valid);
     }
-    fInterpolator = nullptr;
+    fInterpolator            = nullptr;
+    fInterpolatorInitialized = false;
 }

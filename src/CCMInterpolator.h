@@ -9,6 +9,7 @@
 #pragma GCC diagnostic pop
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -20,6 +21,21 @@ namespace TEC
 class CCMInterpolator
 {
   public:
+    struct Diagnostics
+    {
+        std::uint64_t initialization_failures{0};
+        std::uint64_t non_finite_results{0};
+        std::uint64_t linear_fallbacks{0};
+        std::uint64_t nearest_fallbacks{0};
+        std::uint64_t out_of_range_evaluations{0};
+
+        bool HasProblems() const noexcept
+        {
+            return initialization_failures != 0 || non_finite_results != 0 || linear_fallbacks != 0 || nearest_fallbacks != 0 ||
+                   out_of_range_evaluations != 0;
+        }
+    };
+
     CCMInterpolator();
     /// @brief Interpolator constructor, default type is kLINEAR. List of available types:
     // LINEAR interpolation between 2 neighbors;
@@ -61,6 +77,9 @@ class CCMInterpolator
 
     ROOT::Math::Interpolation::Type GetType() const { return fType; }
 
+    static Diagnostics GetDiagnostics() noexcept;
+    static void        ResetDiagnostics() noexcept;
+
     void Reset();
     void ClearPoints();
     void SetType(std::string type, const bool valid_only = true);
@@ -87,6 +106,11 @@ class CCMInterpolator
     /// @return 0 if not valid; 1 if valid; 2 if not valid but linear interpolation is
     /// possible
     int InterpolationValid(const double x, const int index) const;
+
+    bool   InitializeInterpolator();
+    double EvalLinearOrNearest(const double x, const uint index, bool &used_linear) const;
+    size_t MinimumRequiredPoints() const noexcept;
+    bool   HasValidInterpolationData() const noexcept;
 
   private:
     /// @brief Get the value of the closest point to x. If x is outside the range of the
