@@ -283,7 +283,12 @@ For diagnostic you can use following graph-producing functions:
 ```cpp
 std::unique_ptr<TGraph> GetROIShifts(const size_t roi_index, const bool valid_only = true);
 ```
-This will produce a graph of all calculated shifts of given ROI. 
+This will produce a graph of all calculated shifts of given ROI.
+
+Maximum dot-product values for a selected ROI as a function of time:
+```cpp
+std::unique_ptr<TGraph> GetMaxDPGraph(const size_t roi_index, const bool valid_only = true);
+```
 
 
 ```cpp
