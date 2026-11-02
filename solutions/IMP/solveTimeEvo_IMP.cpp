@@ -429,8 +429,10 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
             for (size_t roi_index = 0; roi_index < ccm_fix->GetNumberOfROIs(); ++roi_index)
             {
                 auto shifts  = ccm_fix->GetROIShifts(roi_index);
+                auto max_dp  = ccm_fix->GetMaxDPGraph(roi_index, false);
                 auto profile = ccm_fix->GetInterpolationGraph(roi_index, static_cast<int>(settings.temat_rebin_x), true);
                 shifts->Write();
+                max_dp->Write();
                 profile->Write();
             }
         }

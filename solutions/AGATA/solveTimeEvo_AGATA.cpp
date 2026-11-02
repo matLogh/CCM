@@ -14,12 +14,12 @@
 #include <TBrowser.h>
 #include <TCanvas.h>
 #include <TChain.h>
+#include <TError.h>
 #include <TFile.h>
 #include <TGraph.h>
 #include <TH1D.h>
 #include <TH2D.h>
 #include <TROOT.h>
-#include <TError.h>
 #include <TTree.h>
 
 #include "CCM.h"
@@ -56,7 +56,7 @@ using namespace TEC;
 
 // global parameters used in grid search
 const std::vector<uint> gRebinX{1};
-const std::vector<uint> gRebinY{1};
+const std::vector<uint> gRebinY{1, 2, 4};
 // const std::vector<double> gSmooth_param_lowess{.2, .4, .6, .8, 1.0};
 // const std::vector<double> gSmooth_param_others{1, 2, 5, 10, 20, 50, 100, 200};
 const std::vector<double> gSmooth_param_others{1, 2, 5};
@@ -113,9 +113,7 @@ void numerical_error_handler(int level, Bool_t abort, const char *location, cons
         forward_message(level, abort, location, message);
         if (!gVERBOSE_GSL && message_number == 3)
         {
-            forward_message(kWarning,
-                            kFALSE,
-                            "CCM numerical diagnostics",
+            forward_message(kWarning, kFALSE, "CCM numerical diagnostics",
                             "Further GSL messages will be suppressed and summarized. Use --verbose-gsl to display all of them.");
         }
     }
@@ -173,10 +171,7 @@ class NumericalDiagnosticsReporter
         {
             std::cerr << "  Non-finite interpolation results: " << diagnostics.non_finite_results << std::endl;
         }
-        if (diagnostics.linear_fallbacks != 0)
-        {
-            std::cerr << "  Evaluations using linear fallback: " << diagnostics.linear_fallbacks << std::endl;
-        }
+        if (diagnostics.linear_fallbacks != 0) { std::cerr << "  Evaluations using linear fallback: " << diagnostics.linear_fallbacks << std::endl; }
         if (diagnostics.nearest_fallbacks != 0)
         {
             std::cerr << "  Evaluations using nearest-value fallback: " << diagnostics.nearest_fallbacks << std::endl;
@@ -185,10 +180,7 @@ class NumericalDiagnosticsReporter
         {
             std::cerr << "  Out-of-range interpolation evaluations: " << diagnostics.out_of_range_evaluations << std::endl;
         }
-        if (diagnostics.HasProblems())
-        {
-            std::cerr << "Safe fallback values were used where interpolation was not possible." << std::endl;
-        }
+        if (diagnostics.HasProblems()) { std::cerr << "Safe fallback values were used where interpolation was not possible." << std::endl; }
     }
 };
 } // namespace
@@ -397,6 +389,7 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
             std::string proj_name = "projY_" + get_pointer_string(TEMAT_fixed.get());
             TH1        *proj      = TEMAT_fixed->ProjectionY(proj_name.c_str());
             auto        shifts    = ccm_fix->GetROIShifts(0);
+            auto        max_dp    = ccm_fix->GetMaxDPGraph(0, false);
             auto        profile   = ccm_fix->GetInterpolationGraph(0, static_cast<int>(settings.temat_rebin_x), true);
 
             TEMAT_fixed->GetYaxis()->SetRangeUser(gROIarr.at(1) + gROIarr.at(3), gROIarr.at(2) + gROIarr.at(4));
@@ -406,6 +399,7 @@ void run_ccm_super_settings(std::shared_ptr<TH2> TEMAT, const ccm_settings &sett
             proj->Write();
             TEMAT_fixed->Write();
             shifts->Write();
+            max_dp->Write();
             profile->Write();
         }
     }

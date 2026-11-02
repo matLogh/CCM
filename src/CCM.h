@@ -201,6 +201,12 @@ class CCM
 
     std::unique_ptr<TGraph> GetDotProductGraph(const size_t roi_index, const size_t time_bin);
 
+    /// @brief Get the maximum dot-product value for a selected ROI as a function
+    /// of time. If valid_only is true, results marked invalid are omitted.
+    /// @param roi_index ROI number to be shown
+    /// @param valid_only user is owner of the returned TGraph
+    std::unique_ptr<TGraph> GetMaxDPGraph(const size_t roi_index, const bool valid_only = true);
+
     /// @brief Get all the shifts for selected ROI as a function of time. This is useful
     /// if you want to modify calculated shifts using smoothing functions or set own
     /// interpolation. If valid_only is set to true, only valid ROIs are shown

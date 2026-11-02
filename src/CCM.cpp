@@ -211,6 +211,23 @@ std::unique_ptr<TGraph> TEC::CCM::GetROIShifts(const size_t roi_index, const boo
     return gr;
 }
 
+std::unique_ptr<TGraph> TEC::CCM::GetMaxDPGraph(const size_t roi_index, const bool valid_only)
+{
+    if (roi_index >= V.ROIs.size()) { throw std::runtime_error("ROI index out of bounds"); }
+
+    std::unique_ptr<TGraph> gr = std::make_unique<TGraph>();
+    gr->SetBit(TGraph::kIsSortedX);
+    gr->SetName(Form("maxDP_ROI_%zu", roi_index));
+    gr->SetTitle(Form("maximum dot product for ROI %zu;Time;maxDP", roi_index));
+
+    for (size_t time_bin = 0; time_bin < V.time_bins; time_bin++)
+    {
+        if (valid_only && !ResVec[roi_index][time_bin].isValid) { continue; }
+        gr->AddPoint(GetMatrixTime(time_bin), ResVec[roi_index][time_bin].dp);
+    }
+    return gr;
+}
+
 std::unique_ptr<TGraph> TEC::CCM::GetShiftProfile(const int time_bin, const bool valid_only)
 {
     std::unique_ptr<TGraph> gr = std::make_unique<TGraph>();
@@ -388,6 +405,7 @@ void TEC::CCM::SaveToRootFile(const std::string &outroot_file)
         }
         file.cd();
         t->Write();
+        GetMaxDPGraph(roi, false)->Write();
     }
 
     {
